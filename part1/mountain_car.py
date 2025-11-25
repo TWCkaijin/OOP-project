@@ -35,6 +35,7 @@ def run(episodes, is_training=True, render=False):
     rewards_per_episode = np.zeros(episodes)
 
     for i in range(episodes):
+        learning_rate_a = max(0.2, learning_rate_a * (0.995 ** i))  # Decay learning rate, min 0.1
         state = env.reset()[0]      # Starting position, starting velocity always 0
         state_p = np.digitize(state[0], pos_space)
         state_v = np.digitize(state[1], vel_space)
@@ -42,9 +43,10 @@ def run(episodes, is_training=True, render=False):
         terminated = False          # True when reached goal
 
         rewards=0
-
+        steps = 0   
         while(not terminated and rewards>-1000):
-
+            steps += 1
+            tmp_lr = learning_rate_a * (0.988 ** steps)  # Decay learning rate per reward step taken
             if is_training and rng.random() < epsilon:
                 # Choose random action (0=drive left, 1=stay neutral, 2=drive right)
                 action = env.action_space.sample()
@@ -56,7 +58,7 @@ def run(episodes, is_training=True, render=False):
             new_state_v = np.digitize(new_state[1], vel_space)
 
             if is_training:
-                q[state_p, state_v, action] = q[state_p, state_v, action] + learning_rate_a * (
+                q[state_p, state_v, action] = q[state_p, state_v, action] + tmp_lr * (
                     reward + discount_factor_g*np.max(q[new_state_p, new_state_v,:]) - q[state_p, state_v, action]
                 )
 
@@ -69,6 +71,7 @@ def run(episodes, is_training=True, render=False):
         epsilon = max(epsilon - epsilon_decay_rate, 0)
 
         rewards_per_episode[i] = rewards
+        print(f"Episode {i+1}/{episodes} - Rewards: {rewards} - Epsilon: {epsilon:.3f}")
 
     env.close()
 
@@ -81,6 +84,8 @@ def run(episodes, is_training=True, render=False):
     mean_rewards = np.zeros(episodes)
     for t in range(episodes):
         mean_rewards[t] = np.mean(rewards_per_episode[max(0, t-100):(t+1)])
+    plt.xlabel('Episodes')
+    plt.ylabel('Mean Rewards (moving avg of 100 Episodes)')
     plt.plot(mean_rewards)
     plt.savefig(f'mountain_car.png')
 
