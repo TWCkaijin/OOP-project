@@ -1,0 +1,13 @@
+[project]
+name = "oop-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "farama-notifications>=0.0.4",
+    "gymnasium>=1.2.2",
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.5",
+    "typing-extensions>=4.15.0",
+]
