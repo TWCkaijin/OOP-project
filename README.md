@@ -1,91 +1,90 @@
-# Group Project Setup Guide
+# OOP Project - Reinforcement Learning
 
-## Project Content
-- Gymnasium v1.2.2
-- Part1 Sample Code
-- Part2 Sample Code
-- Part3 Sample Code
-  
+This project explores Reinforcement Learning (RL) concepts using Gymnasium environments. It consists of three parts, covering Q-Learning, SARSA, and a custom environment implementation.
+
+## Project Structure
+
+- **part1/**: Q-Learning implementation for the Mountain Car environment.
+- **part2/**: SARSA implementation for the Frozen Lake (8x8) environment.
+- **part3/**: Custom Gymnasium environment simulation for a Warehouse Robot.
+
+## Prerequisites
+
+Ensure you have Python 3.13+ installed. This project uses `uv` for dependency management, but you can also use `pip`.
+
+### Dependencies
+- `gymnasium`
+- `numpy`
+- `matplotlib`
+- `pygame` (required for Part 3 and rendering)
+- `ipykernel` (for notebook execution)
+
 ## Installation
 
+1.  **Clone the repository** (if applicable) or navigate to the project directory.
+
+2.  **Install dependencies**:
+    If you are using `uv`:
+    ```bash
+    uv sync
+    ```
+    Or with `pip`:
+    ```bash
+    pip install gymnasium numpy matplotlib pygame ipykernel
+    ```
+
+## Usage
+
+### Part 1: Mountain Car (Q-Learning)
+
+Solves the classic Mountain Car problem where an underpowered car must drive up a steep hill.
+
+**Training:**
+To train the agent and save the Q-table:
 ```bash
-# 1. Create a virtual environment
-python -m venv .venv
-
-# 2. Activate the virtual environment
-source .venv/bin/activate
-
-# 3. Navigate to the Gymnasium directory
-cd group_project/Gymnasium
-
-# 4. Install Gymnasium in editable mode
-pip install -e .
-
-# 5. Install additional dependencies
-pip install "gymnasium[classic_control]"
-pip install matplotlib
+python part1/mountain_car.py --train --episodes 10000
 ```
+This will save the model to `part1/mountain_car.pkl` and a reward plot to `part1/mountain_car.png`.
 
----
-
-## ✅ Verification
-
-Run the following command to verify that the installation is successful:
-
+**Evaluation:**
+To run the trained agent with rendering:
 ```bash
-% pip list
+python part1/mountain_car.py --episodes 10 --render
 ```
 
-Sample Output from MacOS:
+### Part 2: Frozen Lake (SARSA)
 
-```
-Package              Version Editable project location
--------------------- ------- --------------------------------------------
-cloudpickle          3.1.2
-Farama-Notifications 0.0.4
-gymnasium            1.2.2   ./group_project/Gymnasium
-numpy                2.3.5
-pip                  24.3.1
-typing_extensions    4.15.0
-```
+Solves the Frozen Lake 8x8 environment where an agent must navigate a frozen lake from Start to Goal without falling into holes.
 
-If your output matches the above (or is similar), your environment is correctly configured.
-
----
-
-## 🚀 Running the Project
-
-### **Part 1: Mountain Car**
-Train and test the reinforcement learning agent:
-
+**Training:**
+To train the agent:
 ```bash
-# Train the agent
-python mountain_car.py --train --episodes 5000
+python part2/frozen_lake.py --train --episodes 10000
+```
+This saves the model to `part2/frozen_lake8x8.pkl` and a reward plot to `part2/frozen_lake8x8.png`.
 
-# Render and visualize performance
-python mountain_car.py --render --episodes 10
+**Evaluation:**
+To evaluate the trained agent:
+```bash
+python part2/frozen_lake.py --episodes 100 --render
 ```
 
-### **Part 2: Frozen Lake**
-Run the Frozen Lake environment:
+### Part 3: Warehouse Robot (Custom Environment)
 
+A custom GridWorld environment where a robot must navigate to a target package.
+
+**Running the Environment:**
+You can run the environment directly to see the robot in action (random actions or manual control if implemented):
 ```bash
-python frozen_lake.py
+python part3/oop_project_env.py
+```
+Or run the robot logic directly:
+```bash
+python part3/warehouse_robot.py
 ```
 
-### **Part 3: OOP Project Environment**
-Execute the custom OOP environment:
+## Implementation Details
 
-```bash
-python oop_project_env.py
-```
-
-**Tip:**  
-If you’re on Windows, replace  
-```bash
-source .venv/bin/activate
-```  
-with  
-```bash
-.venv\Scripts\activate
-```
+-   **Part 1**: Uses Q-Learning with state discretization for continuous observation space.
+-   **Part 2**: Uses SARSA (State-Action-Reward-State-Action) algorithm.
+-   **Part 3**: Implements a custom class `WarehouseRobot` and wraps it in a Gymnasium `Env` class (`WarehouseRobotEnv`). Uses Pygame for rendering.
