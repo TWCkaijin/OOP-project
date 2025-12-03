@@ -92,7 +92,7 @@ def run(episodes, is_training=True, render=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Car Agent Runner")
     parser.add_argument('--train', action='store_true', help='Run in training mode')
-    parser.add_argument('--episodes', type=int, default=10, help='Number of episodes to run')
+    parser.add_argument('--episodes', type=int, default=15000, help='Number of episodes to run')
     parser.add_argument('--render', action='store_true', help='Render the environment')
 
     args = parser.parse_args()

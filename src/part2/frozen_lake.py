@@ -19,7 +19,7 @@ def run(episodes, is_training=True, render=False):
     env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, render_mode='human' if render else None)
 
     if(is_training):
-        q = np.zeros((env.observation_space.n, env.action_space.n)) # init a 64 x 4 array
+        q = np.random.uniform(low=0, high=0.01, size=(env.observation_space.n, env.action_space.n)) # init a 64 x 4 array
     else:
         if os.path.exists('frozen_lake8x8.pkl'):
             f = open('frozen_lake8x8.pkl', 'rb')
@@ -30,8 +30,8 @@ def run(episodes, is_training=True, render=False):
             q = np.zeros((env.observation_space.n, env.action_space.n))
 
 
-    learning_rate_a = 0.1   # Should we use a stable decade learning rate such such as 0.1 + 0.9*np.exp(-i / (episode/10)) ?
-    discount_factor_g = 0.99 # emphasising the future choice (0.9 -> 0.99)
+    learning_rate_a = 0.035   # Learning rate
+    discount_factor_g = 0.995 # Discount factor
     epsilon = 1             
     rng = np.random.default_rng()
 
@@ -42,49 +42,44 @@ def run(episodes, is_training=True, render=False):
         state = env.reset()[0]
         terminated = False
         truncated = False
-        steps = 0
-
-        # SARSA action choice
-        if is_training and rng.random() < epsilon:
-             action = rng.choice([0, 1, 2, 3])
-        else:
-             action = np.argmax(q[state, :])
 
         while(not terminated and not truncated):
-            steps += 1
             
+            # Epsilon-greedy action selection
+            if is_training and rng.random() < epsilon:
+                action = rng.choice([0, 1, 2, 3])
+            else:
+                action = np.argmax(q[state, :])
+
             new_state, reward, terminated, truncated, _ = env.step(action)
 
             if terminated and reward == 1:
                 pass 
-            elif terminated and reward == 0:
-                reward = -1 # penalty for falling into a hole
-
-
-            if is_training and rng.random() < epsilon:
-                next_action = rng.choice([0, 1, 2, 3])
-            else:
-                next_action = np.argmax(q[new_state, :])
-
-            if is_training :
-                # SARSA 
-                q[state, action] = q[state, action] + learning_rate_a * (
-                    reward + discount_factor_g * q[new_state, next_action] - q[state, action]
-                )
+            # elif terminated and reward == 0:
+            #     reward = -1 # penalty
+            # elif reward == 0:
+            #     reward = -0.001 # step penalty
+            
+            # Q-Learning Update
+            if is_training:
+                target = reward
+                if not terminated:
+                    target += discount_factor_g * np.max(q[new_state, :])
                 
-                if terminated:
-                    q[state, action] = q[state, action] + learning_rate_a * (
-                        reward - q[state, action]
-                    )
+                # Learning rate decay
+                current_lr = max(0.005, learning_rate_a * (1 - i/episodes))
+                q[state, action] = q[state, action] + current_lr * (target - q[state, action])
             
             state = new_state
-            action = next_action
         
-        if new_state == 63:
+        # Check if goal reached (reward is 1 and terminated)
+        # Note: In FrozenLake, reward is 1 only when reaching the goal.
+        if reward == 1 and terminated:
             rewards_per_episode[i] = 1
 
+        # Decay epsilon
         if is_training:
-            epsilon = 0.001 + 0.999 * np.cos(min(1,i / (episodes/1.2)) * (np.pi/2))
+            epsilon = max(0, 1 - i / (episodes * 0.85))
 
         past_reward_100 = rewards_per_episode[max(0, i-100):(i+1)]
         current_success_rate = np.sum(past_reward_100==1)
@@ -93,6 +88,7 @@ def run(episodes, is_training=True, render=False):
             best_success_rate = current_success_rate
             with open("frozen_lake8x8.pkl", "wb") as f:
                 pickle.dump(q, f)
+                
 
         print(f"Episode {i+1}/{episodes} - Epsilon: {epsilon:.3f} - Success Rate (L100): {current_success_rate:2}% - Best: {best_success_rate:2}%", end='\r')
 
@@ -116,7 +112,7 @@ def run(episodes, is_training=True, render=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Car Agent Runner")
     parser.add_argument('--train', action='store_true', help='Run in training mode')
-    parser.add_argument('--episodes', type=int, default=10000, help='Number of episodes to run') # 預設改為 10000
+    parser.add_argument('--episodes', type=int, default=15000, help='Number of episodes to run') 
     parser.add_argument('--render', action='store_true', help='Render the environment')
 
     args = parser.parse_args()
