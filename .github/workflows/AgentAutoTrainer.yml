@@ -1,0 +1,84 @@
+name: Agent Auto Trainer
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    train-and-report:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.10"
+
+            - name: Install Dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install "gymnasium[classic_control,toy_text]" numpy matplotlib
+
+            - name: Train Mountain Car
+              id: mountain_car
+              run: |
+                  echo "Running Mountain Car Training..."
+                  # Running with 5000 episodes for CI/CD efficiency
+                  python src/part1/mountain_car.py --train --episodes 5000 > mountain_car_log.txt
+
+                  # Capture output
+                  cat mountain_car_log.txt
+
+                  # Extract metadata
+                  MC_REWARD=$(grep "Final Mean Reward" mountain_car_log.txt | tail -n 1) || echo "MC_REWARD=Not Found"
+                  echo "MC_REWARD=${MC_REWARD}" >> $GITHUB_ENV
+
+            - name: Train Frozen Lake
+              id: frozen_lake
+              run: |
+                  echo "Running Frozen Lake Training..."
+                  # Running with 5000 episodes
+                  python src/part2/frozen_lake.py --train --episodes 5000 > frozen_lake_log.txt
+
+                  # Capture output
+                  cat frozen_lake_log.txt
+
+                  # Extract metadata
+                  FL_RATE=$(grep "Training finished. Best success rate achieved:" frozen_lake_log.txt | tail -n 1) || echo "FL_RATE=Not Found"
+                  echo "FL_RATE=${FL_RATE}" >> $GITHUB_ENV
+
+            - name: Prepare Report
+              run: |
+                  echo "# 🤖 Agent Training Report" > report.md
+                  echo "Automated training run results." >> report.md
+                  echo "" >> report.md
+
+                  echo "## 🏔️ Mountain Car Status" >> report.md
+                  echo "- **Result**: ${{ env.MC_REWARD }}" >> report.md
+                  echo "![Mountain Car Training](mountain_car.png)" >> report.md
+                  echo "" >> report.md
+
+                  echo "## ❄️ Frozen Lake Status" >> report.md
+                  echo "- **Result**: ${{ env.FL_RATE }}" >> report.md
+                  echo "![Frozen Lake Training](frozen_lake8x8.png)" >> report.md
+
+            - name: Create or Update Pull Request
+              uses: peter-evans/create-pull-request@v5
+              with:
+                  commit-message: "Update training results [skip ci]"
+                  title: "🤖 Agent Training Results"
+                  body-path: report.md
+                  branch: agent-training-results
+                  base: main
+                  delete-branch: false
+                  add-paths: |
+                      mountain_car.png
+                      frozen_lake8x8.png
+                      report.md
