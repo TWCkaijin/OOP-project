@@ -45,7 +45,7 @@ def run(episodes, is_training=True, render=False):
 
         while(not terminated and not truncated):
             
-            # Epsilon-greedy action selection
+            # greedy-greedy or rand
             if is_training and rng.random() < epsilon:
                 action = rng.choice([0, 1, 2, 3])
             else:
@@ -72,12 +72,11 @@ def run(episodes, is_training=True, render=False):
             
             state = new_state
         
-        # Check if goal reached (reward is 1 and terminated)
-        # Note: In FrozenLake, reward is 1 only when reaching the goal.
+        # Check if goal (reward is 1 and terminated)
         if reward == 1 and terminated:
             rewards_per_episode[i] = 1
 
-        # Decay epsilon
+        # epsilon decay
         if is_training:
             epsilon = max(0, 1 - i / (episodes * 0.85))
 
