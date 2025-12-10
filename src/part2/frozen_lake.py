@@ -2,6 +2,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import argparse
 
 class DistanceRewardWrapper(gym.Wrapper):
     def __init__(self, env, gamma=0.95):
@@ -45,6 +46,7 @@ class DistanceRewardWrapper(gym.Wrapper):
         return new_state, shaped_reward, terminated, truncated, info
 
 
+
 def print_success_rate(rewards_per_episode):
     """Calculate and print the success rate of the agent."""
     total_episodes = len(rewards_per_episode)
@@ -55,13 +57,7 @@ def print_success_rate(rewards_per_episode):
 
 def run(episodes, is_training=True, render=False):
 
-    env = gym.make(
-    "FrozenLake-v1",
-    map_name="8x8",
-    is_slippery=True,
-    render_mode="ansi" if render else None,
-    )
-
+    env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, success_rate=0.75, render_mode='ansi' if render else None)
     env = DistanceRewardWrapper(env)
 
     if(is_training):
@@ -136,5 +132,17 @@ def run(episodes, is_training=True, render=False):
         f.close()
 
 if __name__ == '__main__':
-    run(15000, is_training=True, render=False)
+
+    parser = argparse.ArgumentParser(description="Car Agent Runner")
+    parser.add_argument('--train', action='store_true', help='Run in training mode')
+    parser.add_argument('--episodes', type=int, default=15000, help='Number of episodes to run') 
+    parser.add_argument('--render', action='store_true', help='Render the environment')
+
+    args = parser.parse_args()
+
+    print(args.train)
+
+    run(args.episodes, is_training=args.train, render=args.render)
+
+    # run(15000, is_training=True, render=False)
     # run(1000, is_training=False, render=True)
