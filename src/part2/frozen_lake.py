@@ -45,7 +45,6 @@ class DistanceRewardWrapper(gym.Wrapper):
         return new_state, shaped_reward, terminated, truncated, info
 
 
-
 def print_success_rate(rewards_per_episode):
     """Calculate and print the success rate of the agent."""
     total_episodes = len(rewards_per_episode)
@@ -56,7 +55,13 @@ def print_success_rate(rewards_per_episode):
 
 def run(episodes, is_training=True, render=False):
 
-    env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, success_rate=0.75, render_mode='ansi' if render else None)
+    env = gym.make(
+    "FrozenLake-v1",
+    map_name="8x8",
+    is_slippery=True,
+    render_mode="ansi" if render else None,
+    )
+
     env = DistanceRewardWrapper(env)
 
     if(is_training):
