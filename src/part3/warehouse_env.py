@@ -1,0 +1,411 @@
+'''
+Warehouse Robot Gym Environment
+Handles: Environment configuration, reward calculation, observation space
+'''
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.envs.registration import register
+import warehouse_robot as wr
+import numpy as np
+import random
+
+register(
+    id='warehouse-robot-v0',
+    entry_point='warehouse_env:WarehouseRobotEnv',
+)
+
+class WarehouseRobotEnv(gym.Env):
+    """
+    Multi-trip delivery environment:
+    - Random 1-8 cargos spawn each episode
+    - Robot can carry max 3 at a time
+    - Must return to origin to deliver
+    - Episode ends when all cargos delivered
+    - Reward based on total steps (fewer = better)
+    """
+    
+    metadata = {"render_modes": ["human"], 'render_fps': 4}
+
+    def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
+                 min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,
+                 enable_obstacles=True, max_steps=1000, reward_config=None):
+        self.grid_rows = grid_rows
+        self.grid_cols = grid_cols
+        self.render_mode = render_mode
+        self.min_cargos = min_cargos
+        self.max_cargos = max_cargos
+        self.max_carry = max_carry
+        self.enable_opponent = enable_opponent
+        self.max_steps = max_steps
+        
+        # Default rewards if not provided
+        self.rewards = reward_config if reward_config else {
+            "step_penalty": -0.02,
+            "collision_penalty": -1.0,
+            "terminate_on_collision": True,
+            "pickup_reward": 0.5,
+            "delivery_base": 1.0,
+            "delivery_combo": 0.5,
+            "shaping_factor": 0.05,
+            "efficiency_bonus": 0.2
+        }
+
+        # Create robot
+        self.robot = wr.WarehouseRobot(
+            grid_rows=grid_rows, 
+            grid_cols=grid_cols, 
+            fps=self.metadata['render_fps'],
+            max_carry=max_carry,
+            enable_opponent=enable_opponent
+        )
+
+        self.action_space = spaces.Discrete(len(wr.RobotAction))
+
+        # Observation: 
+        # 1. robot_r / (rows-1)  [Normalized 0-1]
+        # 2. robot_c / (cols-1)  [Normalized 0-1]
+        # 3. carrying / max_carry [Normalized 0-1]
+        # 4. Combined Grid Map (Flattened 8x8 = 64)
+        #    Values: 0=Empty, 1=Cargo, -1=Obstacle, -2=Opponent
+        
+        base_obs_size = 3 
+        # Removed explicit opponent pos because it's in the grid now
+        
+        target_grid_size = self.grid_rows * self.grid_cols  # 64
+        obs_size = base_obs_size + target_grid_size
+        
+        # Low values - Normalized Range [0.0, 1.0] for first 3
+        # Grid values remain -2, -1, 0, 1
+        low = [0.0, 0.0, 0.0] 
+        low.extend([-2.0] * target_grid_size) 
+        
+        # High values
+        high = [1.0, 1.0, 1.0]
+        high.extend([1.0] * target_grid_size)
+        
+        self.observation_space = spaces.Box(
+            low=np.array(low, dtype=np.float32),
+            high=np.array(high, dtype=np.float32),
+            shape=(obs_size,),
+            dtype=np.float32
+        )
+        
+        # Reward parameters
+        self.max_reward = 100.0
+        # Internal scaler to keep rewards roughly around -1 to +1 range for PPO stability
+        self.reward_scaler = 0.1
+        
+        # Environment state
+        self.total_cargos = 0
+        self.initial_targets = []
+        
+        # FIXED obstacles
+        self.enable_obstacles = enable_obstacles
+        if self.enable_obstacles:
+            self._setup_fixed_obstacles()
+        else:
+            self.obstacles = []
+
+    def _setup_fixed_obstacles(self):
+        """
+        Set up FIXED obstacle positions - challenging maze layout
+        
+        Layout for 8x8 grid:
+        
+        0 1 2 3 4 5 6 7
+        _ _ _ _ _ _ _ _  0
+        _ _ O O O _ _ _  1  (horizontal barrier top)
+        _ _ O _ _ _ O _  2  (vertical walls)
+        _ _ O _ _ _ O _  3
+        _ _ _ _ O O O _  4  (horizontal barrier middle)
+        _ O _ _ _ _ _ _  5  (corner blocker)
+        _ O O _ _ _ O _  6  (L-shape and corner)
+        _ _ _ _ _ _ O _  7
+        
+        Forces robot to navigate around walls, not just go straight
+        """
+        # Challenging layout - walls and barriers
+        self.obstacles = [
+            # Horizontal barrier top (blocks direct path to right side)
+            [1, 2], [1, 3], [1, 4],
+            
+            # Vertical wall left side
+            [2, 2], [3, 2],
+            
+            # Vertical wall right side  
+            [2, 6], [3, 6],
+            
+            # Horizontal barrier middle (blocks center)
+            [4, 4], [4, 5], [4, 6],
+            
+            # L-shape bottom left (blocks corner approach)
+            [5, 1], [6, 1], [6, 2],
+            
+            # Corner blocker bottom right
+            [6, 6], [7, 6],
+        ]
+        
+        # Filter out any obstacles on origin [0,0]
+        self.obstacles = [obs for obs in self.obstacles if obs != [0, 0]]
+
+    def _spawn_cargos(self):
+        """Spawn random 1-8 cargo targets"""
+        self.total_cargos = random.randint(self.min_cargos, self.max_cargos)
+        targets = []
+        for _ in range(self.total_cargos):
+            attempts = 0
+            while attempts < 100:
+                candidate = [
+                    random.randint(0, self.grid_rows-1),
+                    random.randint(0, self.grid_cols-1)
+                ]
+                if (candidate != [0, 0] and 
+                    candidate not in targets and 
+                    candidate not in self.obstacles):
+                    targets.append(candidate)
+                    break
+                attempts += 1
+        self.initial_targets = targets.copy()
+        return targets
+
+    def _get_bot2_action(self):
+        """Simple greedy AI for Robot 2"""
+        bot2_pos = self.robot.robot2_pos
+        targets = self.robot.targets
+        
+        # Decision logic:
+        # 1. If full, go home (to [7,7])
+        # 2. If targets avail, go to nearest
+        # 3. Else go home
+        
+        dest = self.robot.robot2_start
+        if self.robot.robot2_carrying < self.robot.max_carry and targets:
+            # Find nearest target
+            min_dist = float('inf')
+            nearest = targets[0]
+            for t in targets:
+                dist = abs(t[0]-bot2_pos[0]) + abs(t[1]-bot2_pos[1])
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest = t
+            dest = nearest
+            
+        # Determine action to move towards dest
+        dy = dest[0] - bot2_pos[0]
+        dx = dest[1] - bot2_pos[1]
+        
+        if abs(dy) > abs(dx):
+            return wr.RobotAction.DOWN if dy > 0 else wr.RobotAction.UP
+        else:
+            return wr.RobotAction.RIGHT if dx > 0 else wr.RobotAction.LEFT
+
+    def _get_nearest_target_info(self):
+        """Get direction to optimal target"""
+        robot_pos = self.robot.get_position()
+        remaining_targets = self.robot.targets
+        
+        # If carrying max or no targets left, go to origin
+        if not remaining_targets or not self.robot.can_pick_more():
+            dy = 0 - robot_pos[0]
+            dx = 0 - robot_pos[1]
+            dist = abs(dy) + abs(dx)
+            return dx, dy, dist
+        
+        # Find nearest cargo
+        min_dist = float('inf')
+        nearest_diff = [0, 0]
+        
+        for t in remaining_targets:
+            dy = t[0] - robot_pos[0]
+            dx = t[1] - robot_pos[1]
+            dist = abs(dy) + abs(dx)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_diff = [dx, dy]
+                
+        return nearest_diff[0], nearest_diff[1], min_dist
+            
+        # Determine action to move towards dest
+        dy = dest[0] - bot2_pos[0]
+        dx = dest[1] - bot2_pos[1]
+        
+        if abs(dy) > abs(dx):
+            return wr.RobotAction.DOWN if dy > 0 else wr.RobotAction.UP
+        else:
+            return wr.RobotAction.RIGHT if dx > 0 else wr.RobotAction.LEFT
+
+    def _get_obs(self):
+        robot_pos = self.robot.get_position()
+        
+        # Normalize continuous inputs
+        norm_r = robot_pos[0] / (self.grid_rows - 1)
+        norm_c = robot_pos[1] / (self.grid_cols - 1)
+        norm_carry = self.robot.carrying / self.max_carry
+        
+        obs_list = [norm_r, norm_c, norm_carry]
+        
+        # Combined Grid Map
+        # 0: Empty
+        # 1: Target
+        # -1: Obstacle
+        # -2: Opponent
+        grid_map = np.zeros((self.grid_rows, self.grid_cols), dtype=np.float32)
+        
+        # Mark Obstacles
+        for obs in self.obstacles:
+            grid_map[obs[0], obs[1]] = -1.0
+            
+        # Mark Targets
+        for t in self.robot.targets:
+            grid_map[t[0], t[1]] = 1.0
+            
+        # Mark Opponent (if enabled)
+        if self.enable_opponent:
+            r2 = self.robot.robot2_pos
+            grid_map[r2[0], r2[1]] = -2.0
+            
+        obs_list.extend(grid_map.flatten().tolist())
+            
+        return np.array(obs_list, dtype=np.float32)
+
+    def _estimate_optimal_steps(self):
+        """Rough estimate of optimal steps for this episode"""
+        # Trips needed = ceil(total_cargos / max_carry)
+        trips = (self.total_cargos + self.max_carry - 1) // self.max_carry
+        # Each trip: avg distance to cargo + back
+        avg_dist = (self.grid_rows + self.grid_cols) // 2
+        return trips * avg_dist * 2
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        
+        self.robot.reset()
+        # Obstacles are FIXED (set in __init__), only spawn new cargo positions
+        targets = self._spawn_cargos()
+        self.robot.set_environment(targets, self.obstacles)
+        
+        obs = self._get_obs()
+        
+        # Initialize previous distance for reward shaping
+        _, _, self.prev_dist = self._get_nearest_target_info()
+
+        if self.render_mode == 'human':
+            self.render()
+
+        return obs, {"total_cargos": self.total_cargos}
+
+
+    def step(self, action):
+        # 1. Move Robot 2 (Rival) if enabled
+        if self.enable_opponent:
+            bot2_action = self._get_bot2_action()
+            self.robot.move_bot2(bot2_action)
+        
+        # 2. Move Robot 1 (Agent)
+        result = self.robot.move(wr.RobotAction(action))
+        
+        # 3. Calculate distance reward shaping
+        _, _, curr_dist = self._get_nearest_target_info()
+        # Reward for moving closer, penalty for moving away
+        shaping_factor = self.rewards.get('shaping_factor', 0.05)
+        shaping = (self.prev_dist - curr_dist) * shaping_factor
+        self.prev_dist = curr_dist
+        
+        # === DENSE REWARD SHAPING ===
+        step_penalty = self.rewards.get('step_penalty', -0.02)
+        reward = step_penalty + shaping
+        
+        terminated = False
+        
+        # Check collision
+        hit_rival = False
+        if self.enable_opponent:
+            hit_rival = (self.robot.robot_pos == self.robot.robot2_pos)
+        
+        # HARDCORE MODE: Game Over if hit obstacle OR Robot 2 (if enabled)
+        if result["hit_obstacle"] or hit_rival:
+            reward = self.rewards.get('collision_penalty', -1.0)
+            terminated = self.rewards.get('terminate_on_collision', True)
+        
+        # Instant reward for picking up cargo
+        if result["picked_cargo"]:
+            reward += self.rewards.get('pickup_reward', 0.5)
+        
+        # Delivery Reward
+        if result["delivered"] > 0:
+            count = result["delivered"]
+            base = self.rewards.get('delivery_base', 1.0)
+            combo = self.rewards.get('delivery_combo', 0.5)
+            
+            reward += base * count
+            if count > 1:
+                 reward += combo * (count * (count - 1))  # Combo bonus!
+        
+        truncated = False
+        
+        # Check timeout
+        if self.robot.step_count >= self.max_steps:
+            truncated = True
+        
+        # Check if all cargos delivered
+        # Since opponent might take some, we check if NO TARGETS left and Robot 1 is invalid empty
+        all_cleared = (not self.robot.targets) and (self.robot.carrying == 0)
+        
+        if all_cleared:
+            terminated = True
+            optimal = self._estimate_optimal_steps()
+            actual = self.robot.step_count
+            eff_bonus_scale = self.rewards.get('efficiency_bonus', 0.2)
+            efficiency_bonus = eff_bonus_scale * min(1.0, optimal / max(actual, 1))
+            reward += efficiency_bonus
+        
+        # Clamp reward - Optional
+        # reward = max(-1.0, min(1.0, reward))
+            
+        obs = self._get_obs()
+        dx, dy, dist = self._get_nearest_target_info()
+
+        info = {
+            "carrying": self.robot.carrying,
+            "delivered": self.robot.delivered_count,
+            "total_cargos": self.total_cargos,
+            "remaining": len(self.robot.targets),
+            "steps": self.robot.step_count,
+            "picked_cargo": result["picked_cargo"],
+            "just_delivered": result["delivered"],
+            "task_completed": all_cleared,
+            "timeout": truncated
+        }
+
+        if self.render_mode == 'human':
+            self.render()
+
+        return obs, reward * self.reward_scaler, terminated, truncated, info
+
+    def render(self):
+        remaining = len(self.robot.targets)
+        trips_done = self.robot.delivered_count // self.max_carry if self.robot.delivered_count > 0 else 0
+        
+        if not self.robot.can_pick_more() or (remaining == 0 and self.robot.carrying > 0):
+            phase = f"Return ({self.robot.carrying} cargo)"
+        elif remaining > 0:
+            phase = f"Collect ({remaining} left)"
+        else:
+            phase = "Done!"
+            
+        status = f'{phase} | Delivered: {self.robot.delivered_count}/{self.total_cargos} | Steps: {self.robot.step_count}'
+        self.robot.render(status)
+
+if __name__=="__main__":
+    env = gym.make('warehouse-robot-v0', render_mode='human')
+    
+    for ep in range(3):
+        obs, info = env.reset()
+        print(f"\n=== Episode {ep+1}: {info['total_cargos']} cargos ===")
+        
+        terminated = False
+        while not terminated:
+            action = env.action_space.sample()
+            obs, reward, terminated, _, info = env.step(action)
+            
+        print(f"Completed in {info['steps']} steps, Reward: {reward:.2f}")
