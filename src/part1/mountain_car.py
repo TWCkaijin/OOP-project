@@ -5,6 +5,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import os
 
 def run(episodes, is_training=True, render=False):
     if is_training:
