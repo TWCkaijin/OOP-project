@@ -266,9 +266,23 @@ class WarehouseRobot:
                 # Draw Robot 1
                 if [r, c] == self.robot_pos:
                     self.window_surface.blit(self.robot_img, pos)
-                    if self.carrying > 0:
-                        carry_text = self.action_font.render(str(self.carrying), True, (255, 255, 255))
-                        self.window_surface.blit(carry_text, (pos[0] + 5, pos[1] + 5))
+                    # Always show carrying count
+                    carry_str = str(self.carrying)
+                    
+                    # Position relative to cell (top-left)
+                    text_x, text_y = pos[0] + 5, pos[1] + 5
+                    
+                    # Color: White usually, Red if full
+                    text_color = (0, 0, 0)
+                    if self.carrying == self.max_carry:
+                        text_color = (255, 150, 150) # Light red when full
+
+                    carry_text = self.action_font.render(carry_str, True, text_color)
+                    
+                    # Add a black shadow for readability
+                    shadow_text = self.action_font.render(carry_str, True, (0, 0, 0))
+                    self.window_surface.blit(shadow_text, (text_x , text_y))
+                    self.window_surface.blit(carry_text, (text_x, text_y))
 
                     # Draw red bounding box if collision happened
                     if self.collision_active:

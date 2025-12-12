@@ -8,16 +8,18 @@ def load_config(config_path="src/part3/config.yaml"):
     with open(config_path, "r") as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
-def train_agent(config, override_episodes=None, override_opponent=None):
+def train_agent(config, override_episodes=None, override_opponent=None, continue_training=False):
     """
     Train a PPO agent using configuration from YAML.
     """
     try:
-        from stable_baselines3 import PPO
+        from stable_baselines3 import PPO, DQN
         from stable_baselines3.common.callbacks import BaseCallback
     except ImportError:
         print("Please install stable-baselines3: pip install stable-baselines3")
         return None
+    
+    import os
     
     # Extract config
     env_conf = config['environment']
@@ -70,14 +72,29 @@ def train_agent(config, override_episodes=None, override_opponent=None):
     algo_params = train_conf.get(algo_type.lower(), {})
     device = train_conf.get('device', 'cpu')
     
-    if algo_type == 'DQN':
-        try:
-            from stable_baselines3 import DQN
+    model = None
+    
+    # Check if we should continue training
+    if continue_training:
+        if os.path.exists(save_path):
+            print(f"Loading existing model from {save_path} to continue training...")
+            if algo_type == 'DQN':
+                model = DQN.load(save_path, env=env, device=device)
+            else:
+                model = PPO.load(save_path, env=env, device=device)
+        else:
+            print(f"Warning: Model file {save_path} not found. Starting new training session.")
+
+    # Convert to float manually to avoid YAML types issues
+    learning_rate = float(algo_params.get('learning_rate', 3e-4 if algo_type == 'PPO' else 1e-4))
+
+    if model is None:
+        if algo_type == 'DQN':
             model = DQN(
                 "MlpPolicy",
                 env,
                 verbose=0,
-                learning_rate=float(algo_params.get('learning_rate', 1e-4)),
+                learning_rate=learning_rate,
                 buffer_size=algo_params.get('buffer_size', 50000),
                 learning_starts=algo_params.get('learning_starts', 1000),
                 batch_size=algo_params.get('batch_size', 32),
@@ -92,26 +109,23 @@ def train_agent(config, override_episodes=None, override_opponent=None):
                     net_arch=algo_params.get('network_arch', [128, 128])
                 )
             )
-        except ImportError:
-            print("Please install stable-baselines3 used for DQN")
-            return None
-    else:
-        model = PPO(
-            "MlpPolicy", 
-            env, 
-            verbose=0,
-            learning_rate=float(algo_params.get('learning_rate', 3e-4)),
-            n_steps=algo_params.get('n_steps', 2048),
-            batch_size=algo_params.get('batch_size', 64),
-            n_epochs=algo_params.get('n_epochs', 10),
-            gamma=algo_params.get('gamma', 0.99),
-            ent_coef=algo_params.get('ent_coef', 0.01),
-            clip_range=algo_params.get('clip_range', 0.2),
-            device=device,
-            policy_kwargs=dict(
-                net_arch=algo_params.get('network_arch', [64, 64])
+        else:
+            model = PPO(
+                "MlpPolicy", 
+                env, 
+                verbose=0,
+                learning_rate=learning_rate,
+                n_steps=algo_params.get('n_steps', 2048),
+                batch_size=algo_params.get('batch_size', 64),
+                n_epochs=algo_params.get('n_epochs', 10),
+                gamma=algo_params.get('gamma', 0.99),
+                ent_coef=algo_params.get('ent_coef', 0.01),
+                clip_range=algo_params.get('clip_range', 0.2),
+                device=device,
+                policy_kwargs=dict(
+                    net_arch=algo_params.get('network_arch', [64, 64])
+                )
             )
-        )
     
     callback = EpisodeCallback(target_episodes=episodes)
     
@@ -127,7 +141,9 @@ def train_agent(config, override_episodes=None, override_opponent=None):
         print(f"    {k}: {v}")
     print("-" * 50)
     
-    model.learn(total_timesteps=episodes * 2000, callback=callback)
+    # reset_num_timesteps=False is important when continuing training to keep tensorboard logs consistent
+    # ensuring continuity if using TB, though we aren't explicitly here.
+    model.learn(total_timesteps=episodes * 2000, callback=callback, reset_num_timesteps=not continue_training)
     
     print("-" * 50)
     print(f"Training complete! {callback.episode_count} episodes")
@@ -141,7 +157,7 @@ def train_agent(config, override_episodes=None, override_opponent=None):
 def evaluate_agent(config, override_episodes=None, override_render=True, override_opponent=None):
     """Evaluate a trained agent using config"""
     try:
-        from stable_baselines3 import PPO
+        from stable_baselines3 import PPO, DQN
     except ImportError:
         print("Please install stable-baselines3: pip install stable-baselines3")
         return
@@ -158,7 +174,6 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     algo_type = train_conf.get('algorithm', 'PPO')
     
     if algo_type == 'DQN':
-        from stable_baselines3 import DQN
         model = DQN.load(model_path, device=train_conf.get('device', 'cpu'))
     else:
         model = PPO.load(model_path, device=train_conf.get('device', 'cpu'))
@@ -209,6 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--episodes', type=int, default=None, help='Number of episodes') 
     parser.add_argument('--render', action='store_true', help='Enable rendering')
     parser.add_argument('--train', action='store_true', help='Train a new agent')
+    parser.add_argument('--continue-train', action='store_true', help='Continue training existing agent')
     parser.add_argument('--eval', action='store_true', help='Evaluate trained agent')
     parser.add_argument('--no-opponent', action='store_true', help='Disable the opponent (override YAML)')
     
@@ -216,8 +232,10 @@ if __name__ == '__main__':
     override_opponent = False if args.no_opponent else None
     
     if args.train:
-        train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent)
+        train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=False)
+    elif args.continue_train:
+         train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=True)
     elif args.eval:
         evaluate_agent(config, override_episodes=args.episodes, override_render=args.render, override_opponent=override_opponent)
     else:
-        print("Please specify --train or --eval mode.")
+        print("Please specify --train, --continue-train, or --eval mode.")
