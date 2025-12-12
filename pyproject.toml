@@ -10,5 +10,6 @@ dependencies = [
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.7",
     "numpy>=2.3.5",
+    "pygame>=2.6.1",
     "typing-extensions>=4.15.0",
 ]
