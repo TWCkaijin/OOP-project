@@ -28,7 +28,7 @@ class WarehouseRobotEnv(gym.Env):
 
     def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
                  min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,
-                 enable_obstacles=True, max_steps=1000, reward_config=None, stage=3):
+                 enable_obstacles=True, random_obstacles=False, max_steps=1000, reward_config=None, stage=3):
         self.grid_rows = grid_rows
         self.grid_cols = grid_cols
         self.render_mode = render_mode
@@ -121,10 +121,19 @@ class WarehouseRobotEnv(gym.Env):
         self.total_cargos = 0
         self.initial_targets = []
         
-        # FIXED obstacles
+        # Obstacle Configuration
         self.enable_obstacles = enable_obstacles
+        self.random_obstacles = random_obstacles
+        self.fixed_obstacles = []
+        
         if self.enable_obstacles:
+            # Pre-calculate fixed layout just in case we need it (or for fallback)
             self._setup_fixed_obstacles()
+            # If not random, we can set it now. If random, reset() will handle it.
+            if not self.random_obstacles:
+                self.obstacles = self.fixed_obstacles.copy()
+            else:
+                self.obstacles = [] # Will be set in reset()
         else:
             self.obstacles = []
 
@@ -167,8 +176,33 @@ class WarehouseRobotEnv(gym.Env):
             [6, 6], [7, 6],
         ]
         
-        # Filter out any obstacles on origin [0,0]
-        self.obstacles = [obs for obs in self.obstacles if obs != [0, 0]]
+        # Changed logic to store in self.fixed_obstacles instead of self.obstacles
+        self.fixed_obstacles = [obs for obs in self.obstacles if obs != [0, 0]]
+
+    def _generate_random_obstacles(self):
+        """Generate random obstacles avoiding start/end zones"""
+        num_obstacles = random.randint(10, 20) # Variation in density
+        new_obstacles = []
+        
+        # Safe zones: Origin and Opponent Base
+        safe_zones = [[0,0], [0,1], [1,0], [1,1]] # Top-left
+        if self.enable_opponent:
+            rows, cols = self.grid_rows, self.grid_cols
+            safe_zones.extend([
+                [rows-1, cols-1], [rows-1, cols-2], [rows-2, cols-1]
+            ])
+            
+        attempts = 0
+        while len(new_obstacles) < num_obstacles and attempts < 100:
+            r = random.randint(0, self.grid_rows-1)
+            c = random.randint(0, self.grid_cols-1)
+            candidate = [r, c]
+            
+            if candidate not in safe_zones and candidate not in new_obstacles:
+                new_obstacles.append(candidate)
+            attempts += 1
+            
+        return new_obstacles
 
     def _spawn_cargos(self):
         """Spawn random 1-8 cargo targets"""
@@ -365,7 +399,14 @@ class WarehouseRobotEnv(gym.Env):
         super().reset(seed=seed)
         
         self.robot.reset()
-        # Obstacles are FIXED (set in __init__), only spawn new cargo positions
+        
+        # Handle Obstacles
+        if self.enable_obstacles:
+            if self.random_obstacles:
+                self.obstacles = self._generate_random_obstacles()
+            else:
+                self.obstacles = self.fixed_obstacles.copy()
+        
         targets = self._spawn_cargos()
         self.robot.set_environment(targets, self.obstacles)
         

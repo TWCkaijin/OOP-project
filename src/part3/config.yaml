@@ -3,7 +3,7 @@ environment:
   # 1: Navigation Only (Single target, no enemy, ends on pickup)
   # 2: Cargo Delivery (Variable cargo, no enemy, full delivery loop)
   # 3: Competition (Full game with enemy)
-  stage: 2 # Default stage
+  stage: 1 # Default stage
   grid_rows: 8
   grid_cols: 8
   max_carry: 2
@@ -12,6 +12,7 @@ environment:
   max_steps: 150
   enable_opponent: false
   enable_obstacles: True
+  random_obstacles: True # If true, generates random obstacles each episode. If false, uses fixed layout.
 
 rewards:
   step_penalty: -0.05

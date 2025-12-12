@@ -28,15 +28,17 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     reward_conf = config.get('rewards', None)
     
     # Allow overrides
-    episodes = override_episodes if override_episodes is not None else train_conf['episodes']
-    enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
     save_path = path_conf['model_save_path']
+    stage = env_conf.get('stage', 3)  # Default to 3 if not in config
+    random_obstacles = env_conf.get('random_obstacles', False)
     
     env = gym.make('warehouse-robot-v0', render_mode=None, 
                    enable_opponent=enable_opponent,
                    enable_obstacles=env_conf.get('enable_obstacles', True),
+                   random_obstacles=random_obstacles,
                    max_steps=env_conf.get('max_steps', 1000),
-                   reward_config=reward_conf)
+                   reward_config=reward_conf,
+                   stage=stage)
     
     # Custom callback to track episodes
     class EpisodeCallback(BaseCallback):
@@ -170,6 +172,8 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     model_path = path_conf['model_save_path']
     episodes = override_episodes if override_episodes is not None else 5
     enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
+    stage = env_conf.get('stage', 3)
+    random_obstacles = env_conf.get('random_obstacles', False)
     
     algo_type = train_conf.get('algorithm', 'PPO')
     
@@ -180,8 +184,10 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     env = gym.make('warehouse-robot-v0', render_mode='human' if override_render else None, 
                    enable_opponent=enable_opponent,
                    enable_obstacles=env_conf.get('enable_obstacles', True),
+                   random_obstacles=random_obstacles,
                    max_steps=env_conf.get('max_steps', 1000),
-                   reward_config=reward_conf)
+                   reward_config=reward_conf,
+                   stage=stage)
     
     total_rewards = []
     total_steps = []
