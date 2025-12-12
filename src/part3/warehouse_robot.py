@@ -169,6 +169,7 @@ class WarehouseRobot:
         
         return {
             "hit_obstacle": hit_obstacle or hit_boundary,  # Threat both as collision
+            "moved": not (hit_obstacle or hit_boundary),
             "picked_cargo": picked_cargo,
             "delivered": delivered,
             "at_origin": self.robot_pos == [0, 0],

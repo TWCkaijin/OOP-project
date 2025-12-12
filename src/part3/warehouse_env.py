@@ -28,14 +28,35 @@ class WarehouseRobotEnv(gym.Env):
 
     def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
                  min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,
-                 enable_obstacles=True, max_steps=1000, reward_config=None):
+                 enable_obstacles=True, max_steps=1000, reward_config=None, stage=3):
         self.grid_rows = grid_rows
         self.grid_cols = grid_cols
         self.render_mode = render_mode
-        self.min_cargos = min_cargos
-        self.max_cargos = max_cargos
-        self.max_carry = max_carry
-        self.enable_opponent = enable_opponent
+        self.stage = stage
+        
+        # --- Curriculum Logic ---
+        # Override settings based on stage
+        if self.stage == 1:
+            # Stage 1: Navigation Only
+            # Single target, single carry, no opponent
+            self.min_cargos = 1
+            self.max_cargos = 1
+            self.max_carry = 1
+            self.enable_opponent = False
+        elif self.stage == 2:
+            # Stage 2: Cargo Pickup w/o Opponent
+            # Full cargo logic, but no rival
+            self.min_cargos = min_cargos
+            self.max_cargos = max_cargos
+            self.max_carry = max_carry
+            self.enable_opponent = False
+        else: # Stage 3 (Default/Full)
+            # Stage 3: Competition
+            self.min_cargos = min_cargos
+            self.max_cargos = max_cargos
+            self.max_carry = max_carry
+            self.enable_opponent = enable_opponent # Use passed config or default True
+
         self.max_steps = max_steps
         
         # Default rewards if not provided
@@ -51,12 +72,13 @@ class WarehouseRobotEnv(gym.Env):
         }
 
         # Create robot
+        # Note: We pass the *computed* enable_opponent flag, not the raw argument
         self.robot = wr.WarehouseRobot(
             grid_rows=grid_rows, 
             grid_cols=grid_cols, 
             fps=self.metadata['render_fps'],
-            max_carry=max_carry,
-            enable_opponent=enable_opponent
+            max_carry=self.max_carry,
+            enable_opponent=self.enable_opponent
         )
 
         self.action_space = spaces.Discrete(len(wr.RobotAction))
@@ -68,19 +90,19 @@ class WarehouseRobotEnv(gym.Env):
         # 4. Combined Grid Map (Flattened 8x8 = 64)
         #    Values: 0=Empty, 1=Cargo, -1=Obstacle, -2=Opponent
         
-        base_obs_size = 3 
+        base_obs_size = 5 # 3 original + 2 direction hints
         # Removed explicit opponent pos because it's in the grid now
         
         target_grid_size = self.grid_rows * self.grid_cols  # 64
         obs_size = base_obs_size + target_grid_size
         
-        # Low values - Normalized Range [0.0, 1.0] for first 3
+        # Low values - Normalized Range [0.0, 1.0] for first 3, [-1.0, 1.0] for dir
         # Grid values remain -2, -1, 0, 1
-        low = [0.0, 0.0, 0.0] 
+        low = [0.0, 0.0, 0.0, -1.0, -1.0] 
         low.extend([-2.0] * target_grid_size) 
         
         # High values
-        high = [1.0, 1.0, 1.0]
+        high = [1.0, 1.0, 1.0, 1.0, 1.0]
         high.extend([1.0] * target_grid_size)
         
         self.observation_space = spaces.Box(
@@ -199,29 +221,66 @@ class WarehouseRobotEnv(gym.Env):
         else:
             return wr.RobotAction.RIGHT if dx > 0 else wr.RobotAction.LEFT
 
+    def _bfs_distance(self, start, end):
+        """Calculate true distance using BFS to account for obstacles"""
+        if start == end:
+            return 0
+            
+        queue = [(start, 0)]
+        visited = {tuple(start)}
+        
+        # Grid boundaries
+        rows, cols = self.grid_rows, self.grid_cols
+        
+        while queue:
+            (r, c), dist = queue.pop(0)
+            
+            if [r, c] == end:
+                return dist
+                
+            # Check 4 directions
+            for dr, dc in [(-1,0), (1,0), (0,-1), (0,1)]:
+                nr, nc = r + dr, c + dc
+                
+                # Check bounds
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    # Check not visited
+                    if (nr, nc) not in visited:
+                        # Check obstacles (note: end point might be occupied by something, generally targets are not obstacles)
+                        # But in our setup, obstacles are in self.obstacles
+                        if [nr, nc] not in self.obstacles:
+                            visited.add((nr, nc))
+                            queue.append(([nr, nc], dist + 1))
+                            
+        # If no path found (shouldn't happen in valid maps, but fallback to Manhattan)
+        return abs(start[0]-end[0]) + abs(start[1]-end[1])
+
     def _get_nearest_target_info(self):
-        """Get direction to optimal target"""
+        """Get direction to optimal target using BFS distance"""
         robot_pos = self.robot.get_position()
         remaining_targets = self.robot.targets
         
         # If carrying max or no targets left, go to origin
         if not remaining_targets or not self.robot.can_pick_more():
-            dy = 0 - robot_pos[0]
-            dx = 0 - robot_pos[1]
-            dist = abs(dy) + abs(dx)
+            dest = [0, 0]
+            dist = self._bfs_distance(robot_pos, dest)
+            
+            # Direction for info (kept simple Manhattan approx for vector)
+            dy = dest[0] - robot_pos[0]
+            dx = dest[1] - robot_pos[1]
             return dx, dy, dist
         
-        # Find nearest cargo
+        # Find nearest cargo by TRUE distance
         min_dist = float('inf')
         nearest_diff = [0, 0]
         
         for t in remaining_targets:
-            dy = t[0] - robot_pos[0]
-            dx = t[1] - robot_pos[1]
-            dist = abs(dy) + abs(dx)
+            # Use BFS distance instead of Manhattan
+            dist = self._bfs_distance(robot_pos, t)
+            
             if dist < min_dist:
                 min_dist = dist
-                nearest_diff = [dx, dy]
+                nearest_diff = [t[1] - robot_pos[1], t[0] - robot_pos[0]]
                 
         return nearest_diff[0], nearest_diff[1], min_dist
             
@@ -243,6 +302,32 @@ class WarehouseRobotEnv(gym.Env):
         norm_carry = self.robot.carrying / self.max_carry
         
         obs_list = [norm_r, norm_c, norm_carry]
+        
+        # Add BFS direction hint to observation
+        # This gives the agent a "compass" that accounts for walls
+        bfs_dx, bfs_dy, _ = self._get_nearest_target_info()
+        # Normalize to -1 to 1 range (roughly) or just signs
+        # bfs_dx/dy are distance deltas, but _get_nearest_target_info in previous turn helps
+        # Wait, _get_nearest_target_info returns (dx, dy, dist) where dx, dy is the vector to target
+        # Let's verify what _get_nearest_target_info currently returns. 
+        # In the previous turn, I updated it to use BFS distance, but the dx/dy calculation 
+        # was "nearest_diff = [t[1] - robot_pos[1], t[0] - robot_pos[0]]" which is just vector.
+        # This vector goes THROUGH walls. It's not the BFS *path* direction.
+        
+        # It's better to explicitly calculate the NEXT step for BFS and give that direction.
+        # But for now, let's just add the "Through Walls" vector (already returned) 
+        # AND maybe the distance.
+        
+        # Actually, let's stick to the vector returned (Manhattan direction) for now 
+        # as calculating full path next-step every frame is expensive (though BFS is expensive anyway).
+        
+        # Let's normalize the vector to unit or sign.
+        mag = abs(bfs_dx) + abs(bfs_dy)
+        if mag > 0:
+            obs_list.append(bfs_dx / mag)
+            obs_list.append(bfs_dy / mag)
+        else:
+            obs_list.extend([0.0, 0.0])
         
         # Combined Grid Map
         # 0: Empty
@@ -288,6 +373,7 @@ class WarehouseRobotEnv(gym.Env):
         
         # Initialize previous distance for reward shaping
         _, _, self.prev_dist = self._get_nearest_target_info()
+        self.last_pos = None  # Track last position to punish oscillation
 
         if self.render_mode == 'human':
             self.render()
@@ -315,6 +401,11 @@ class WarehouseRobotEnv(gym.Env):
         step_penalty = self.rewards.get('step_penalty', -0.02)
         reward = step_penalty + shaping
         
+        # Oscillation penalty: penalize returning to the immediate previous position
+        if self.last_pos is not None and self.robot.get_position() == self.last_pos:
+             reward -= 0.1  # Small penalty for backtracking
+        self.last_pos = self.robot.get_position() if result['moved'] else self.last_pos
+        
         terminated = False
         
         # Check collision
@@ -330,6 +421,14 @@ class WarehouseRobotEnv(gym.Env):
         # Instant reward for picking up cargo
         if result["picked_cargo"]:
             reward += self.rewards.get('pickup_reward', 0.5)
+            
+            # === STAGE 1: Navigation Only ===
+            # End episode immediately upon reaching the target
+            if self.stage == 1:
+                terminated = True
+                # Give a big "success" reward similar to delivery
+                reward += self.rewards.get('delivery_base', 5.0)
+                # We can also add efficiency bonus here if we want, but simple is better for now
         
         # Delivery Reward
         if result["delivered"] > 0:

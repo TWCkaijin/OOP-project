@@ -1,5 +1,5 @@
-from controller import RobotController
 import argparse
+
 import gymnasium as gym
 import warehouse_env  # Register the environment
 import yaml
@@ -66,26 +66,65 @@ def train_agent(config, override_episodes=None, override_opponent=None):
                     return False
             return True
     
-    model = PPO(
-        "MlpPolicy", 
-        env, 
-        verbose=0,
-        learning_rate=float(train_conf['learning_rate']),
-        n_steps=train_conf['n_steps'],
-        batch_size=train_conf['batch_size'],
-        n_epochs=train_conf['n_epochs'],
-        gamma=train_conf['gamma'],
-        ent_coef=train_conf['ent_coef'],
-        clip_range=train_conf['clip_range'],
-        device='auto',
-        policy_kwargs=dict(
-            net_arch=train_conf.get('network_arch', [64, 64])
+    algo_type = train_conf.get('algorithm', 'PPO')
+    algo_params = train_conf.get(algo_type.lower(), {})
+    device = train_conf.get('device', 'cpu')
+    
+    if algo_type == 'DQN':
+        try:
+            from stable_baselines3 import DQN
+            model = DQN(
+                "MlpPolicy",
+                env,
+                verbose=0,
+                learning_rate=float(algo_params.get('learning_rate', 1e-4)),
+                buffer_size=algo_params.get('buffer_size', 50000),
+                learning_starts=algo_params.get('learning_starts', 1000),
+                batch_size=algo_params.get('batch_size', 32),
+                gamma=algo_params.get('gamma', 0.99),
+                train_freq=algo_params.get('train_freq', 4),
+                gradient_steps=algo_params.get('gradient_steps', 1),
+                target_update_interval=algo_params.get('target_update_interval', 250),
+                exploration_fraction=algo_params.get('exploration_fraction', 0.1),
+                exploration_final_eps=algo_params.get('exploration_final_eps', 0.05),
+                device=device,
+                policy_kwargs=dict(
+                    net_arch=algo_params.get('network_arch', [128, 128])
+                )
+            )
+        except ImportError:
+            print("Please install stable-baselines3 used for DQN")
+            return None
+    else:
+        model = PPO(
+            "MlpPolicy", 
+            env, 
+            verbose=0,
+            learning_rate=float(algo_params.get('learning_rate', 3e-4)),
+            n_steps=algo_params.get('n_steps', 2048),
+            batch_size=algo_params.get('batch_size', 64),
+            n_epochs=algo_params.get('n_epochs', 10),
+            gamma=algo_params.get('gamma', 0.99),
+            ent_coef=algo_params.get('ent_coef', 0.01),
+            clip_range=algo_params.get('clip_range', 0.2),
+            device=device,
+            policy_kwargs=dict(
+                net_arch=algo_params.get('network_arch', [64, 64])
+            )
         )
-    )
     
     callback = EpisodeCallback(target_episodes=episodes)
     
     print(f"Training for {episodes} episodes... (Opponent: {enable_opponent})")
+    print(f"Device: {device}")
+    print("-" * 50)
+    print("Configuration Summary:")
+    print(f"  Algorithm: {algo_type}")
+    print(f"  Environment: {env_conf}")
+    print(f"  Rewards: {reward_conf}")
+    print(f"  Training Params ({algo_type}):")
+    for k, v in algo_params.items():
+        print(f"    {k}: {v}")
     print("-" * 50)
     
     model.learn(total_timesteps=episodes * 2000, callback=callback)
@@ -110,12 +149,19 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     path_conf = config['paths']
     env_conf = config['environment']
     reward_conf = config.get('rewards', None)
+    train_conf = config.get('training', {})
     
     model_path = path_conf['model_save_path']
     episodes = override_episodes if override_episodes is not None else 5
     enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
     
-    model = PPO.load(model_path)
+    algo_type = train_conf.get('algorithm', 'PPO')
+    
+    if algo_type == 'DQN':
+        from stable_baselines3 import DQN
+        model = DQN.load(model_path, device=train_conf.get('device', 'cpu'))
+    else:
+        model = PPO.load(model_path, device=train_conf.get('device', 'cpu'))
     env = gym.make('warehouse-robot-v0', render_mode='human' if override_render else None, 
                    enable_opponent=enable_opponent,
                    enable_obstacles=env_conf.get('enable_obstacles', True),
@@ -174,5 +220,4 @@ if __name__ == '__main__':
     elif args.eval:
         evaluate_agent(config, override_episodes=args.episodes, override_render=args.render, override_opponent=override_opponent)
     else:
-        controller = RobotController(episodes=args.episodes or 5, render=args.render)
-        controller.run()
+        print("Please specify --train or --eval mode.")
