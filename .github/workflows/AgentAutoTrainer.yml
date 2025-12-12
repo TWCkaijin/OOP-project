@@ -4,6 +4,11 @@ on:
   push:
     branches: [gitActions]
   workflow_dispatch:
+    inputs:
+      episodes:
+        description: "Number of episodes for evaluation"
+        required: true
+        default: "100"
 
 permissions:
   contents: write
@@ -32,8 +37,8 @@ jobs:
         id: mountain_car
         run: |
           echo "Running Mountain Car Evaluation..."
-          # Running evaluation with 100 episodes
-          uv run python src/part1/mountain_car.py --episodes 100 > mountain_car_log.txt
+          # Running evaluation with ${{ inputs.episodes || 100 }} episodes
+          uv run python src/part1/mountain_car.py --episodes ${{ inputs.episodes || 100 }} > mountain_car_log.txt
 
           # Capture output
           cat mountain_car_log.txt
@@ -46,8 +51,8 @@ jobs:
         id: frozen_lake
         run: |
           echo "Running Frozen Lake Evaluation..."
-          # Running evaluation with 100 episodes
-          uv run python src/part2/frozen_lake.py --episodes 100 > frozen_lake_log.txt
+          # Running evaluation with ${{ inputs.episodes || 100 }} episodes
+          uv run python src/part2/frozen_lake.py --episodes ${{ inputs.episodes || 100 }} > frozen_lake_log.txt
 
           # Capture output
           cat frozen_lake_log.txt
@@ -60,8 +65,8 @@ jobs:
         id: warehouse_robot
         run: |
           echo "Running Warehouse Robot Evaluation..."
-          # Running evaluation with 100 episodes
-          uv run python src/part3/warehouse_agent.py --episodes 100 > warehouse_log.txt
+          # Running evaluation with ${{ inputs.episodes || 100 }} episodes
+          uv run python src/part3/warehouse_agent.py --episodes ${{ inputs.episodes || 100 }} > warehouse_log.txt
 
           # Capture output
           cat warehouse_log.txt
@@ -78,17 +83,14 @@ jobs:
 
           echo "## 🏔️ Mountain Car Status" >> report.md
           echo "- **Result**: ${{ env.MC_REWARD }}" >> report.md
-          echo "![Mountain Car Evaluation](mountain_car.png)" >> report.md
           echo "" >> report.md
 
           echo "## ❄️ Frozen Lake Status" >> report.md
           echo "- **Result**: ${{ env.FL_RATE }}" >> report.md
-          # Frozen Lake Evaluation does not generate a plot
           echo "" >> report.md
 
           echo "## 🤖 Warehouse Robot Status" >> report.md
           echo "- **Result**: ${{ env.WR_RATE }}" >> report.md
-          # Warehouse Robot Evaluation does not generate a plot
 
       - name: Create or Update Pull Request
         uses: peter-evans/create-pull-request@v5
@@ -100,5 +102,4 @@ jobs:
           base: main
           delete-branch: false
           add-paths: |
-            mountain_car.png
             report.md
