@@ -90,7 +90,8 @@ def run(episodes, is_training=True, render=False):
                 pickle.dump(q, f)
                 
 
-        print(f"Episode {i+1}/{episodes} - Epsilon: {epsilon:.3f} - Success Rate (L100): {current_success_rate:2}% - Best: {best_success_rate:2}%", end='\r')
+        if (i + 1) % 100 == 0:
+            print(f"Episode {i+1}/{episodes} - Epsilon: {epsilon:.3f} - Success Rate (L100): {current_success_rate:2}% - Best: {best_success_rate:2}%")
 
     env.close()
 

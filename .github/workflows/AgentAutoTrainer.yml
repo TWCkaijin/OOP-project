@@ -41,7 +41,7 @@ jobs:
           uv run python src/part1/mountain_car.py --episodes ${{ inputs.episodes || 100 }} > mountain_car_log.txt
 
           # Capture output
-          cat mountain_car_log.txt
+          tail -n 20 mountain_car_log.txt
 
           # Extract metadata
           MC_REWARD=$(grep "Final Mean Reward" mountain_car_log.txt | tail -n 1) || echo "MC_REWARD=Not Found"
@@ -55,7 +55,7 @@ jobs:
           uv run python src/part2/frozen_lake.py --episodes ${{ inputs.episodes || 100 }} > frozen_lake_log.txt
 
           # Capture output
-          cat frozen_lake_log.txt
+          tail -n 20 frozen_lake_log.txt
 
           # Extract metadata
           FL_RATE=$(grep "✅ Success Rate:" frozen_lake_log.txt | tail -n 1) || echo "FL_RATE=Not Found"
@@ -69,7 +69,7 @@ jobs:
           uv run python src/part3/warehouse_agent.py --episodes ${{ inputs.episodes || 100 }} > warehouse_log.txt
 
           # Capture output
-          cat warehouse_log.txt
+          tail -n 20 warehouse_log.txt
 
           # Extract metadata
           WR_RATE=$(grep "Evaluation completed. Success Rate:" warehouse_log.txt | tail -n 1) || echo "WR_RATE=Not Found"
