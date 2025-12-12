@@ -34,7 +34,6 @@ class WarehouseRobotEnv(gym.Env):
         self.render_mode = render_mode
         self.stage = stage
         
-        # --- Curriculum Logic ---
         # Override settings based on stage
         if self.stage == 1:
             # Stage 1: Navigation Only
@@ -246,8 +245,7 @@ class WarehouseRobotEnv(gym.Env):
                 if 0 <= nr < rows and 0 <= nc < cols:
                     # Check not visited
                     if (nr, nc) not in visited:
-                        # Check obstacles (note: end point might be occupied by something, generally targets are not obstacles)
-                        # But in our setup, obstacles are in self.obstacles
+                        # Check obstacles
                         if [nr, nc] not in self.obstacles:
                             visited.add((nr, nc))
                             queue.append(([nr, nc], dist + 1))
@@ -304,24 +302,7 @@ class WarehouseRobotEnv(gym.Env):
         obs_list = [norm_r, norm_c, norm_carry]
         
         # Add BFS direction hint to observation
-        # This gives the agent a "compass" that accounts for walls
         bfs_dx, bfs_dy, _ = self._get_nearest_target_info()
-        # Normalize to -1 to 1 range (roughly) or just signs
-        # bfs_dx/dy are distance deltas, but _get_nearest_target_info in previous turn helps
-        # Wait, _get_nearest_target_info returns (dx, dy, dist) where dx, dy is the vector to target
-        # Let's verify what _get_nearest_target_info currently returns. 
-        # In the previous turn, I updated it to use BFS distance, but the dx/dy calculation 
-        # was "nearest_diff = [t[1] - robot_pos[1], t[0] - robot_pos[0]]" which is just vector.
-        # This vector goes THROUGH walls. It's not the BFS *path* direction.
-        
-        # It's better to explicitly calculate the NEXT step for BFS and give that direction.
-        # But for now, let's just add the "Through Walls" vector (already returned) 
-        # AND maybe the distance.
-        
-        # Actually, let's stick to the vector returned (Manhattan direction) for now 
-        # as calculating full path next-step every frame is expensive (though BFS is expensive anyway).
-        
-        # Let's normalize the vector to unit or sign.
         mag = abs(bfs_dx) + abs(bfs_dy)
         if mag > 0:
             obs_list.append(bfs_dx / mag)
@@ -447,7 +428,6 @@ class WarehouseRobotEnv(gym.Env):
             truncated = True
         
         # Check if all cargos delivered
-        # Since opponent might take some, we check if NO TARGETS left and Robot 1 is invalid empty
         all_cleared = (not self.robot.targets) and (self.robot.carrying == 0)
         
         if all_cleared:

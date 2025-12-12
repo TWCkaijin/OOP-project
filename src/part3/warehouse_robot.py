@@ -218,7 +218,6 @@ class WarehouseRobot:
     def render(self, status_text: str = ""):
         """Render the grid with current state"""
         # Console output
-        # Console output (disabled to keep terminal clean)
         # for r in range(self.grid_rows):
         #     for c in range(self.grid_cols):
         #         if [r, c] == self.robot_pos:
@@ -284,18 +283,18 @@ class WarehouseRobot:
                     self.window_surface.blit(shadow_text, (text_x , text_y))
                     self.window_surface.blit(carry_text, (text_x, text_y))
 
-                    # Draw red bounding box if collision happened
+                    # Draw red box on collision
                     if self.collision_active:
                          pygame.draw.rect(self.window_surface, (255, 0, 0), 
                                 (pos[0], pos[1], self.cell_width, self.cell_height), 4)
 
-                # Draw Robot 2 (Blue Circle) only if enabled
+                # Draw Robot 2 (Blue)
                 if self.enable_opponent and [r, c] == self.robot2_pos:
-                    # Draw a blue robot representation
+                    # Draw blue robot
                     pygame.draw.circle(self.window_surface, (0, 0, 255), 
                                      (pos[0] + self.cell_width//2, pos[1] + self.cell_height//2), 
                                      self.cell_width//3)
-                    # Show carry count
+                    # carry count
                     if self.robot2_carrying > 0:
                         carry2_text = self.action_font.render(str(self.robot2_carrying), True, (255, 255, 255))
                         self.window_surface.blit(carry2_text, (pos[0] + 5, pos[1] + 5))
