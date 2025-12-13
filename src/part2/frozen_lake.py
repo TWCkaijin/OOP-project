@@ -90,20 +90,28 @@ def run(episodes, is_training=True, render=False):
                 pickle.dump(q, f)
                 
 
-        print(f"Episode {i+1}/{episodes} - Epsilon: {epsilon:.3f} - Success Rate (L100): {current_success_rate:2}% - Best: {best_success_rate:2}%", end='\r')
+        if (i + 1) % max(1, int(episodes * 0.1)) == 0 or (i + 1) == episodes:
+            print(f"Episode {i+1}/{episodes} - Epsilon: {epsilon:.3f} - Success Rate (L100): {current_success_rate:2}% - Best: {best_success_rate:2}%")
 
     env.close()
 
-    if is_training:
-        sum_rewards = np.zeros(episodes)
-        for t in range(episodes):
-            sum_rewards[t] = np.sum(rewards_per_episode[max(0, t-100):(t+1)])
-        plt.plot(sum_rewards)
-        plt.title('Frozen Lake 8x8 - Rewards over Episodes (Last 100)')
-        plt.xlabel('Episodes')
-        plt.ylabel('Sum of Rewards')
-        plt.savefig('frozen_lake8x8.png')
+    # Plotting for both training and evaluation
+    sum_rewards = np.zeros(episodes)
+    for t in range(episodes):
+        sum_rewards[t] = np.sum(rewards_per_episode[max(0, t-100):(t+1)])
     
+    plt.figure(figsize=(10, 6))
+    plt.plot(sum_rewards)
+    if is_training:
+        plt.title('Frozen Lake 8x8 - Training Rewards (Last 100 Moving Avg)')
+    else:
+        plt.title('Frozen Lake 8x8 - Evaluation Rewards (Last 100 Moving Avg)')
+    plt.xlabel('Episodes')
+    plt.ylabel('Sum of Rewards')
+    plt.grid(True)
+    plt.savefig('frozen_lake8x8.png')
+    plt.close()
+
     if is_training == False:
         print(print_success_rate(rewards_per_episode))
     else:

@@ -79,6 +79,7 @@ jobs:
         run: |
           echo "# 🤖 Agent Evaluation Report" > report.md
           echo "Automated evaluation run results." >> report.md
+          echo "![Mountain Car Result](src/part1/mountain_car.png)" >> report.md
           echo "" >> report.md
 
           echo "## 🏔️ Mountain Car Status" >> report.md
@@ -87,10 +88,12 @@ jobs:
 
           echo "## ❄️ Frozen Lake Status" >> report.md
           echo "- **Result**: ${{ env.FL_RATE }}" >> report.md
+          echo "![Frozen Lake Result](src/part2/frozen_lake8x8.png)" >> report.md
           echo "" >> report.md
 
           echo "## 🤖 Warehouse Robot Status" >> report.md
           echo "- **Result**: ${{ env.WR_RATE }}" >> report.md
+          echo "![Warehouse Robot Result](src/part3/warehouse_robot.png)" >> report.md
 
       - name: Create or Update Pull Request
         uses: peter-evans/create-pull-request@v5
@@ -103,3 +106,6 @@ jobs:
           delete-branch: false
           add-paths: |
             report.md
+            src/part1/mountain_car.png
+            src/part2/frozen_lake8x8.png
+            src/part3/warehouse_robot.png
