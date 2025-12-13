@@ -8,6 +8,7 @@ from gymnasium.envs.registration import register
 import warehouse_robot as wr
 import numpy as np
 import random
+from obstacles import (ObstacleGenerator, FixedObstacleGenerator,  RandomObstacleGenerator, EmptyObstacleGenerator)
 
 register(
     id='warehouse-robot-v0',
@@ -121,88 +122,19 @@ class WarehouseRobotEnv(gym.Env):
         self.total_cargos = 0
         self.initial_targets = []
         
-        # Obstacle Configuration
+        # Obstacle Configuration - uses polymorphic generators
         self.enable_obstacles = enable_obstacles
         self.random_obstacles = random_obstacles
-        self.fixed_obstacles = []
         
-        if self.enable_obstacles:
-            # Pre-calculate fixed layout just in case we need it (or for fallback)
-            self._setup_fixed_obstacles()
-            # If not random, we can set it now. If random, reset() will handle it.
-            if not self.random_obstacles:
-                self.obstacles = self.fixed_obstacles.copy()
-            else:
-                self.obstacles = [] # Will be set in reset()
+        # Select appropriate obstacle generator based on config
+        if not self.enable_obstacles:
+            self.obstacle_generator = EmptyObstacleGenerator(grid_rows, grid_cols)
+        elif self.random_obstacles:
+            self.obstacle_generator = RandomObstacleGenerator(grid_rows, grid_cols)
         else:
-            self.obstacles = []
-
-    def _setup_fixed_obstacles(self):
-        """
-        Set up FIXED obstacle positions - challenging maze layout
+            self.obstacle_generator = FixedObstacleGenerator(grid_rows, grid_cols)
         
-        Layout for 8x8 grid:
-        
-        0 1 2 3 4 5 6 7
-        _ _ _ _ _ _ _ _  0
-        _ _ O O O _ _ _  1  (horizontal barrier top)
-        _ _ O _ _ _ O _  2  (vertical walls)
-        _ _ O _ _ _ O _  3
-        _ _ _ _ O O O _  4  (horizontal barrier middle)
-        _ O _ _ _ _ _ _  5  (corner blocker)
-        _ O O _ _ _ O _  6  (L-shape and corner)
-        _ _ _ _ _ _ O _  7
-        
-        Forces robot to navigate around walls, not just go straight
-        """
-        # Challenging layout - walls and barriers
-        self.obstacles = [
-            # Horizontal barrier top (blocks direct path to right side)
-            [1, 2], [1, 3], [1, 4],
-            
-            # Vertical wall left side
-            [2, 2], [3, 2],
-            
-            # Vertical wall right side  
-            [2, 6], [3, 6],
-            
-            # Horizontal barrier middle (blocks center)
-            [4, 4], [4, 5], [4, 6],
-            
-            # L-shape bottom left (blocks corner approach)
-            [5, 1], [6, 1], [6, 2],
-            
-            # Corner blocker bottom right
-            [6, 6], [7, 6],
-        ]
-        
-        # Changed logic to store in self.fixed_obstacles instead of self.obstacles
-        self.fixed_obstacles = [obs for obs in self.obstacles if obs != [0, 0]]
-
-    def _generate_random_obstacles(self):
-        """Generate random obstacles avoiding start/end zones"""
-        num_obstacles = random.randint(10, 20) # Variation in density
-        new_obstacles = []
-        
-        # Safe zones: Origin and Opponent Base
-        safe_zones = [[0,0], [0,1], [1,0], [1,1]] # Top-left
-        if self.enable_opponent:
-            rows, cols = self.grid_rows, self.grid_cols
-            safe_zones.extend([
-                [rows-1, cols-1], [rows-1, cols-2], [rows-2, cols-1]
-            ])
-            
-        attempts = 0
-        while len(new_obstacles) < num_obstacles and attempts < 100:
-            r = random.randint(0, self.grid_rows-1)
-            c = random.randint(0, self.grid_cols-1)
-            candidate = [r, c]
-            
-            if candidate not in safe_zones and candidate not in new_obstacles:
-                new_obstacles.append(candidate)
-            attempts += 1
-            
-        return new_obstacles
+        self.obstacles = []  # populated in reset()
 
     def _spawn_cargos(self):
         """Spawn random 1-8 cargo targets"""
@@ -400,12 +332,11 @@ class WarehouseRobotEnv(gym.Env):
         
         self.robot.reset()
         
-        # Handle Obstacles
-        if self.enable_obstacles:
-            if self.random_obstacles:
-                self.obstacles = self._generate_random_obstacles()
-            else:
-                self.obstacles = self.fixed_obstacles.copy()
+        # Generate obstacles using the generator
+        safe_zones = [[0, 0]]
+        if self.enable_opponent:
+            safe_zones.append([self.grid_rows-1, self.grid_cols-1])
+        self.obstacles = self.obstacle_generator.generate(safe_zones)
         
         targets = self._spawn_cargos()
         self.robot.set_environment(targets, self.obstacles)
