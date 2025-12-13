@@ -253,7 +253,7 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
     plt.grid(True)
-    plt.savefig('warehouse_robot.png')
+    plt.savefig('src/part3/warehouse_robot.png')
     plt.close()
     
     env.close()
