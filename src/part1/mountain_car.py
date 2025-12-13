@@ -84,6 +84,9 @@ def run(episodes, is_training=True, render=False):
     mean_rewards = np.zeros(episodes)
     for t in range(episodes):
         mean_rewards[t] = np.mean(rewards_per_episode[max(0, t-100):(t+1)])
+    
+    print(f"Final Mean Reward (Last 100 episodes): {mean_rewards[-1]:.2f}")
+
     plt.xlabel('Episodes')
     plt.ylabel('Mean Rewards (moving avg of 100 Episodes)')
     plt.plot(mean_rewards)

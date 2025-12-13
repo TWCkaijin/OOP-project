@@ -1,0 +1,56 @@
+environment:
+  # Curriculum Stages:
+  # 1: Navigation Only (Single target, no enemy, ends on pickup)
+  # 2: Cargo Delivery (Variable cargo, no enemy, full delivery loop)
+  # 3: Competition (Full game with enemy)
+  stage: 2 # Default stage
+  grid_rows: 8
+  grid_cols: 8
+  max_carry: 3
+  min_cargos: 2
+  max_cargos: 8
+  max_steps: 150
+  enable_opponent: false
+  enable_obstacles: True
+  random_obstacles: false # If true, generates random obstacles each episode. If false, uses fixed layout.
+
+rewards:
+  step_penalty: -0.05
+  collision_penalty: -2.0
+  terminate_on_collision: false
+  pickup_reward: 2.0
+  delivery_base: 5.0
+  delivery_combo: 2.0
+  shaping_factor: 0.2 # Increased slightly to guide navigation
+  efficiency_bonus: 3.0 # Higher bonus
+
+training:
+  algorithm: "DQN" # Options: "DQN", "PPO"
+  episodes: 200000
+  device: "cpu"
+
+  dqn:
+    learning_rate: 1e-4
+    buffer_size: 50000
+    learning_starts: 1000
+    batch_size: 64
+    gamma: 0.99
+    train_freq: 4
+    gradient_steps: 1
+    target_update_interval: 500
+    exploration_fraction: 0.2
+    exploration_final_eps: 0.05
+    network_arch: [256, 256]
+
+  ppo:
+    learning_rate: 3e-4
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    ent_coef: 0.01
+    clip_range: 0.2
+    network_arch: [128, 128, 128]
+
+paths:
+  model_save_path: "src/part3/ppo_warehouse_no_opponent"

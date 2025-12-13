@@ -6,9 +6,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "farama-notifications>=0.0.4",
-    "gymnasium>=1.2.2",
+    "gymnasium[classic-control]>=1.2.2",
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.7",
     "numpy>=2.3.5",
+    "pygame>=2.6.1",
+    "pyyaml>=6.0.3",
+    "stable-baselines3>=2.7.1",
     "typing-extensions>=4.15.0",
 ]
