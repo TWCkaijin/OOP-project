@@ -75,6 +75,9 @@ jobs:
           WR_RATE=$(grep "Evaluation completed. Success Rate:" warehouse_log.txt | tail -n 1) || echo "WR_RATE=Not Found"
           echo "WR_RATE=${WR_RATE}" >> $GITHUB_ENV
 
+          WR_AVG_REWARD=$(grep "Avg Reward:" warehouse_log.txt | tail -n 1) || echo "WR_AVG_REWARD=Not Found"
+          echo "WR_AVG_REWARD=${WR_AVG_REWARD}" >> $GITHUB_ENV
+
       - name: Prepare Report
         run: |
           echo "# 🤖 Agent Evaluation Report" > report.md
@@ -88,12 +91,11 @@ jobs:
 
           echo "## ❄️ Frozen Lake Status" >> report.md
           echo "- **Result**: ${{ env.FL_RATE }}" >> report.md
-          echo "![Frozen Lake Result](src/part2/frozen_lake8x8.png)" >> report.md
           echo "" >> report.md
 
           echo "## 🤖 Warehouse Robot Status" >> report.md
           echo "- **Result**: ${{ env.WR_RATE }}" >> report.md
-          echo "![Warehouse Robot Result](src/part3/warehouse_robot.png)" >> report.md
+          echo "- **Metrics**: ${{ env.WR_AVG_REWARD }}" >> report.md
 
       - name: Create or Update Pull Request
         uses: peter-evans/create-pull-request@v5
@@ -106,6 +108,3 @@ jobs:
           delete-branch: false
           add-paths: |
             report.md
-            src/part1/mountain_car.png
-            src/part2/frozen_lake8x8.png
-            src/part3/warehouse_robot.png

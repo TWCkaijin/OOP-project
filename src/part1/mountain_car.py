@@ -3,7 +3,6 @@
 import argparse
 import gymnasium as gym
 import numpy as np
-import matplotlib.pyplot as plt
 import pickle
 import os
 
@@ -92,11 +91,6 @@ def run(episodes, is_training=True, render=False):
         mean_rewards[t] = np.mean(rewards_per_episode[max(0, t-100):(t+1)])
     
     print(f"Final Mean Reward (Last 100 episodes): {mean_rewards[-1]:.2f}")
-
-    plt.xlabel('Episodes')
-    plt.ylabel('Mean Rewards (moving avg of 100 Episodes)')
-    plt.plot(mean_rewards)
-    plt.savefig(f'mountain_car.png')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Car Agent Runner")

@@ -3,7 +3,6 @@ import argparse
 import gymnasium as gym
 import warehouse_env  # Register the environment
 import yaml
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 
@@ -245,16 +244,6 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     print(f"Avg Reward: {sum(total_rewards)/len(total_rewards):.2f}")
     print(f"Avg Steps: {sum(total_steps)/len(total_steps):.1f}")
     print(f"Evaluation completed. Success Rate: {success_rate:.2f}%")
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    plt.plot(total_rewards)
-    plt.title('Warehouse Robot - Evaluation Rewards')
-    plt.xlabel('Episodes')
-    plt.ylabel('Reward')
-    plt.grid(True)
-    plt.savefig('src/part3/warehouse_robot.png')
-    plt.close()
     
     env.close()
 
