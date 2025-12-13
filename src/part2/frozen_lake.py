@@ -21,8 +21,9 @@ def run(episodes, is_training=True, render=False):
     if(is_training):
         q = np.random.uniform(low=0, high=0.01, size=(env.observation_space.n, env.action_space.n)) # init a 64 x 4 array
     else:
-        if os.path.exists('frozen_lake8x8.pkl'):
-            f = open('frozen_lake8x8.pkl', 'rb')
+        model_path = os.path.join(os.path.dirname(__file__), 'frozen_lake8x8.pkl')
+        if os.path.exists(model_path):
+            f = open(model_path, 'rb')
             q = pickle.load(f)
             f.close()
         else:
