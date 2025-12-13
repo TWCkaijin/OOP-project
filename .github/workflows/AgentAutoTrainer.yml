@@ -66,7 +66,7 @@ jobs:
         run: |
           echo "Running Warehouse Robot Evaluation..."
           # Running evaluation with ${{ inputs.episodes || 100 }} episodes
-          uv run python src/part3/warehouse_agent.py --episodes ${{ inputs.episodes || 100 }} > warehouse_log.txt
+          uv run python src/part3/main.py --eval --episodes ${{ inputs.episodes || 100 }} > warehouse_log.txt
 
           # Capture output
           tail -n 20 warehouse_log.txt
