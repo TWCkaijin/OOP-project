@@ -14,7 +14,7 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     """
     try:
         from stable_baselines3 import PPO, DQN
-        from stable_baselines3.common.callbacks import BaseCallback
+        from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
     except ImportError:
         print("Please install stable-baselines3: pip install stable-baselines3")
         return None
@@ -33,7 +33,7 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     random_obstacles = env_conf.get('random_obstacles', False)
     
     env = gym.make('warehouse-robot-v0', render_mode=None, 
-                   enable_opponent=enable_opponent,
+                   enable_opponent=override_opponent,
                    enable_obstacles=env_conf.get('enable_obstacles', True),
                    random_obstacles=random_obstacles,
                    max_steps=env_conf.get('max_steps', 1000),
@@ -78,14 +78,19 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     
     # Check if we should continue training
     if continue_training:
-        if os.path.exists(save_path):
-            print(f"Loading existing model from {save_path} to continue training...")
+        # Check for .zip extension handling in SB3
+        check_path = save_path
+        if not os.path.exists(check_path) and os.path.exists(check_path + ".zip"):
+            check_path = check_path + ".zip"
+            
+        if os.path.exists(check_path):
+            print(f"Loading existing model from {check_path} to continue training...")
             if algo_type == 'DQN':
-                model = DQN.load(save_path, env=env, device=device)
+                model = DQN.load(check_path, env=env, device=device)
             else:
-                model = PPO.load(save_path, env=env, device=device)
+                model = PPO.load(check_path, env=env, device=device)
         else:
-            print(f"Warning: Model file {save_path} not found. Starting new training session.")
+            print(f"Warning: Model file {save_path} (or .zip) not found. Starting new training session.")
 
     # Convert to float manually to avoid YAML types issues
     learning_rate = float(algo_params.get('learning_rate', 3e-4 if algo_type == 'PPO' else 1e-4))
@@ -129,9 +134,9 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
                 )
             )
     
-    callback = EpisodeCallback(target_episodes=episodes)
+    callback = EpisodeCallback(target_episodes=train_conf.get('episodes', override_episodes))
     
-    print(f"Training for {episodes} episodes... (Opponent: {enable_opponent})")
+    print(f"Training for {train_conf.get('episodes', override_episodes)} episodes... (Opponent: {override_opponent})")
     print(f"Device: {device}")
     print("-" * 50)
     print("Configuration Summary:")
@@ -143,9 +148,24 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
         print(f"    {k}: {v}")
     print("-" * 50)
     
-    # reset_num_timesteps=False is important when continuing training to keep tensorboard logs consistent
-    # ensuring continuity if using TB, though we aren't explicitly here.
-    model.learn(total_timesteps=episodes * 2000, callback=callback, reset_num_timesteps=not continue_training)
+    # Checkpoint Callback
+    checkpoint_callback = CheckpointCallback(
+        save_freq=train_conf.get('episodes', override_episodes) * 2000/20, 
+        save_path=os.path.dirname(save_path) + "/checkpoints",
+        name_prefix="ckpt_" + algo_type.lower()
+    )
+    
+    callbacks = [callback, checkpoint_callback]
+    
+    try:
+        # reset_num_timesteps=False is important when continuing training to keep tensorboard logs consistent
+        model.learn(total_timesteps=train_conf.get('episodes', 100000)*2000, callback=callbacks, reset_num_timesteps=not continue_training)
+    except KeyboardInterrupt:
+        print("\nTraining interrupted by user. Saving current model...")
+        model.save(save_path)
+        print(f"Model saved to {save_path}")
+        env.close()
+        return model
     
     print("-" * 50)
     print(f"Training complete! {callback.episode_count} episodes")
