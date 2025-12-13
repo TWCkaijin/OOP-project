@@ -8,7 +8,8 @@ from gymnasium.envs.registration import register
 import warehouse_robot as wr
 import numpy as np
 import random
-from obstacles import (ObstacleGenerator, FixedObstacleGenerator,  RandomObstacleGenerator, EmptyObstacleGenerator)
+from obstacles import (ObstacleGenerator, FixedObstacleGenerator, RandomObstacleGenerator, EmptyObstacleGenerator)
+from rewards import RewardStrategy, BasicReward, ShapingReward, CompetitiveReward
 
 register(
     id='warehouse-robot-v0',
@@ -60,7 +61,7 @@ class WarehouseRobotEnv(gym.Env):
 
         self.max_steps = max_steps
         
-        # Default rewards if not provided
+        # Reward strategy 
         self.rewards = reward_config if reward_config else {
             "step_penalty": -0.02,
             "collision_penalty": -1.0,
@@ -71,6 +72,12 @@ class WarehouseRobotEnv(gym.Env):
             "shaping_factor": 0.05,
             "efficiency_bonus": 0.2
         }
+        
+        # Select reward strategy based on config
+        if self.enable_opponent:
+            self.reward_strategy = CompetitiveReward(self.rewards)
+        else:
+            self.reward_strategy = ShapingReward(self.rewards)
 
         # Create robot
         # Note: We pass the *computed* enable_opponent flag, not the raw argument
@@ -364,71 +371,51 @@ class WarehouseRobotEnv(gym.Env):
         
         # 3. Calculate distance reward shaping
         _, _, curr_dist = self._get_nearest_target_info()
-        # Reward for moving closer, penalty for moving away
-        shaping_factor = self.rewards.get('shaping_factor', 0.05)
-        shaping = (self.prev_dist - curr_dist) * shaping_factor
-        self.prev_dist = curr_dist
         
-        # === DENSE REWARD SHAPING ===
-        step_penalty = self.rewards.get('step_penalty', -0.02)
-        reward = step_penalty + shaping
-        
-        # Oscillation penalty: penalize returning to the immediate previous position
-        if self.last_pos is not None and self.robot.get_position() == self.last_pos:
-             reward -= 0.1  # Small penalty for backtracking
-        self.last_pos = self.robot.get_position() if result['moved'] else self.last_pos
-        
-        terminated = False
-        
-        # Check collision
+        # Check collision with rival
         hit_rival = False
         if self.enable_opponent:
             hit_rival = (self.robot.robot_pos == self.robot.robot2_pos)
         
-        # HARDCORE MODE: Game Over if hit obstacle OR Robot 2 (if enabled)
+        # Check if all cargos delivered
+        all_cleared = (not self.robot.targets) and (self.robot.carrying == 0)
+        
+        # Build state dict for reward strategy
+        reward_state = {
+            "prev_dist": self.prev_dist,
+            "curr_dist": curr_dist,
+            "is_backtrack": self.last_pos is not None and self.robot.get_position() == self.last_pos,
+            "hit_rival": hit_rival,
+            "all_cleared": all_cleared,
+            "optimal_steps": self._estimate_optimal_steps() if all_cleared else 0,
+            "actual_steps": self.robot.step_count,
+            "my_delivered": self.robot.delivered_count,
+            "opponent_delivered": self.robot.robot2_delivered if self.enable_opponent else 0,
+        }
+        
+        # Calculate reward using polymorphic strategy
+        reward = self.reward_strategy.calculate(result, reward_state)
+        
+        # Update state tracking
+        self.prev_dist = curr_dist
+        self.last_pos = self.robot.get_position() if result['moved'] else self.last_pos
+        
+        # Handle termination
+        terminated = False
+        
         if result["hit_obstacle"] or hit_rival:
-            reward = self.rewards.get('collision_penalty', -1.0)
             terminated = self.rewards.get('terminate_on_collision', True)
         
-        # Instant reward for picking up cargo
-        if result["picked_cargo"]:
-            reward += self.rewards.get('pickup_reward', 0.5)
-            
-            # === STAGE 1: Navigation Only ===
-            # End episode immediately upon reaching the target
-            if self.stage == 1:
-                terminated = True
-                # Give a big "success" reward similar to delivery
-                reward += self.rewards.get('delivery_base', 5.0)
-                # We can also add efficiency bonus here if we want, but simple is better for now
-        
-        # Delivery Reward
-        if result["delivered"] > 0:
-            count = result["delivered"]
-            base = self.rewards.get('delivery_base', 1.0)
-            combo = self.rewards.get('delivery_combo', 0.5)
-            
-            reward += base * count
-            if count > 1:
-                 reward += combo * (count * (count - 1))  # Combo bonus!
-        
-        truncated = False
-        
-        # Check timeout
-        if self.robot.step_count >= self.max_steps:
-            truncated = True
-        
-        # Check if all cargos delivered
-        # Since opponent might take some, we check if NO TARGETS left and Robot 1 is invalid empty
-        all_cleared = (not self.robot.targets) and (self.robot.carrying == 0)
+        # Stage 1: End on pickup
+        if self.stage == 1 and result["picked_cargo"]:
+            terminated = True
+            reward += self.rewards.get('delivery_base', 5.0)
         
         if all_cleared:
             terminated = True
-            optimal = self._estimate_optimal_steps()
-            actual = self.robot.step_count
-            eff_bonus_scale = self.rewards.get('efficiency_bonus', 0.2)
-            efficiency_bonus = eff_bonus_scale * min(1.0, optimal / max(actual, 1))
-            reward += efficiency_bonus
+        
+        # Check timeout
+        truncated = self.robot.step_count >= self.max_steps
         
         # Clamp reward - Optional
         # reward = max(-1.0, min(1.0, reward))
