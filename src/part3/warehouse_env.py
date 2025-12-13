@@ -10,6 +10,7 @@ import numpy as np
 import random
 from obstacles import (ObstacleGenerator, FixedObstacleGenerator, RandomObstacleGenerator, EmptyObstacleGenerator)
 from rewards import RewardStrategy, BasicReward, ShapingReward, CompetitiveReward
+from robots import BaseRobot, GreedyRobot, RandomRobot, PatrolRobot
 
 register(
     id='warehouse-robot-v0',
@@ -79,8 +80,7 @@ class WarehouseRobotEnv(gym.Env):
         else:
             self.reward_strategy = ShapingReward(self.rewards)
 
-        # Create robot
-        # Note: We pass the *computed* enable_opponent flag, not the raw argument
+        # Create main robot 
         self.robot = wr.WarehouseRobot(
             grid_rows=grid_rows, 
             grid_cols=grid_cols, 
@@ -88,6 +88,13 @@ class WarehouseRobotEnv(gym.Env):
             max_carry=self.max_carry,
             enable_opponent=self.enable_opponent
         )
+        
+        # Create opponent robot using polymorphic class
+        if self.enable_opponent:
+            opponent_start = [grid_rows - 1, grid_cols - 1]
+            self.opponent_robot = GreedyRobot(opponent_start, grid_rows, grid_cols, self.max_carry)
+        else:
+            self.opponent_robot = None
 
         self.action_space = spaces.Discrete(len(wr.RobotAction))
 
@@ -164,35 +171,10 @@ class WarehouseRobotEnv(gym.Env):
         return targets
 
     def _get_bot2_action(self):
-        """Simple greedy AI for Robot 2"""
-        bot2_pos = self.robot.robot2_pos
-        targets = self.robot.targets
-        
-        # Decision logic:
-        # 1. If full, go home (to [7,7])
-        # 2. If targets avail, go to nearest
-        # 3. Else go home
-        
-        dest = self.robot.robot2_start
-        if self.robot.robot2_carrying < self.robot.max_carry and targets:
-            # Find nearest target
-            min_dist = float('inf')
-            nearest = targets[0]
-            for t in targets:
-                dist = abs(t[0]-bot2_pos[0]) + abs(t[1]-bot2_pos[1])
-                if dist < min_dist:
-                    min_dist = dist
-                    nearest = t
-            dest = nearest
-            
-        # Determine action to move towards dest
-        dy = dest[0] - bot2_pos[0]
-        dx = dest[1] - bot2_pos[1]
-        
-        if abs(dy) > abs(dx):
-            return wr.RobotAction.DOWN if dy > 0 else wr.RobotAction.UP
-        else:
-            return wr.RobotAction.RIGHT if dx > 0 else wr.RobotAction.LEFT
+        """Get opponent action using polymorphic robot class"""
+        self.opponent_robot.pos = list(self.robot.robot2_pos)
+        self.opponent_robot.carrying = self.robot.robot2_carrying
+        return self.opponent_robot.get_action(self.robot.targets, self.obstacles)
 
     def _bfs_distance(self, start, end):
         """Calculate true distance using BFS to account for obstacles"""
