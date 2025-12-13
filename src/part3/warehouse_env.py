@@ -8,6 +8,9 @@ from gymnasium.envs.registration import register
 import warehouse_robot as wr
 import numpy as np
 import random
+from obstacles import (ObstacleGenerator, FixedObstacleGenerator, RandomObstacleGenerator, EmptyObstacleGenerator)
+from rewards import RewardStrategy, BasicReward, ShapingReward, CompetitiveReward
+from robots import BaseRobot, GreedyRobot, RandomRobot, PatrolRobot
 
 register(
     id='warehouse-robot-v0',
@@ -28,7 +31,7 @@ class WarehouseRobotEnv(gym.Env):
 
     def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
                  min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,
-                 enable_obstacles=True, max_steps=1000, reward_config=None, stage=3):
+                 enable_obstacles=True, random_obstacles=False, max_steps=1000, reward_config=None, stage=3):
         self.grid_rows = grid_rows
         self.grid_cols = grid_cols
         self.render_mode = render_mode
@@ -58,7 +61,7 @@ class WarehouseRobotEnv(gym.Env):
 
         self.max_steps = max_steps
         
-        # Default rewards if not provided
+        # Reward strategy 
         self.rewards = reward_config if reward_config else {
             "step_penalty": -0.02,
             "collision_penalty": -1.0,
@@ -69,9 +72,14 @@ class WarehouseRobotEnv(gym.Env):
             "shaping_factor": 0.05,
             "efficiency_bonus": 0.2
         }
+        
+        # Select reward strategy based on config
+        if self.enable_opponent:
+            self.reward_strategy = CompetitiveReward(self.rewards)
+        else:
+            self.reward_strategy = ShapingReward(self.rewards)
 
-        # Create robot
-        # Note: We pass the *computed* enable_opponent flag, not the raw argument
+        # Create main robot 
         self.robot = wr.WarehouseRobot(
             grid_rows=grid_rows, 
             grid_cols=grid_cols, 
@@ -79,6 +87,13 @@ class WarehouseRobotEnv(gym.Env):
             max_carry=self.max_carry,
             enable_opponent=self.enable_opponent
         )
+        
+        # Create opponent robot using polymorphic class
+        if self.enable_opponent:
+            opponent_start = [grid_rows - 1, grid_cols - 1]
+            self.opponent_robot = GreedyRobot(opponent_start, grid_rows, grid_cols, self.max_carry)
+        else:
+            self.opponent_robot = None
 
         self.action_space = spaces.Discrete(len(wr.RobotAction))
 
@@ -120,54 +135,19 @@ class WarehouseRobotEnv(gym.Env):
         self.total_cargos = 0
         self.initial_targets = []
         
-        # FIXED obstacles
+        # Obstacle Configuration - uses polymorphic generators
         self.enable_obstacles = enable_obstacles
-        if self.enable_obstacles:
-            self._setup_fixed_obstacles()
+        self.random_obstacles = random_obstacles
+        
+        # Select appropriate obstacle generator based on config
+        if not self.enable_obstacles:
+            self.obstacle_generator = EmptyObstacleGenerator(grid_rows, grid_cols)
+        elif self.random_obstacles:
+            self.obstacle_generator = RandomObstacleGenerator(grid_rows, grid_cols)
         else:
-            self.obstacles = []
-
-    def _setup_fixed_obstacles(self):
-        """
-        Set up FIXED obstacle positions - challenging maze layout
+            self.obstacle_generator = FixedObstacleGenerator(grid_rows, grid_cols)
         
-        Layout for 8x8 grid:
-        
-        0 1 2 3 4 5 6 7
-        _ _ _ _ _ _ _ _  0
-        _ _ O O O _ _ _  1  (horizontal barrier top)
-        _ _ O _ _ _ O _  2  (vertical walls)
-        _ _ O _ _ _ O _  3
-        _ _ _ _ O O O _  4  (horizontal barrier middle)
-        _ O _ _ _ _ _ _  5  (corner blocker)
-        _ O O _ _ _ O _  6  (L-shape and corner)
-        _ _ _ _ _ _ O _  7
-        
-        Forces robot to navigate around walls, not just go straight
-        """
-        # Challenging layout - walls and barriers
-        self.obstacles = [
-            # Horizontal barrier top (blocks direct path to right side)
-            [1, 2], [1, 3], [1, 4],
-            
-            # Vertical wall left side
-            [2, 2], [3, 2],
-            
-            # Vertical wall right side  
-            [2, 6], [3, 6],
-            
-            # Horizontal barrier middle (blocks center)
-            [4, 4], [4, 5], [4, 6],
-            
-            # L-shape bottom left (blocks corner approach)
-            [5, 1], [6, 1], [6, 2],
-            
-            # Corner blocker bottom right
-            [6, 6], [7, 6],
-        ]
-        
-        # Filter out any obstacles on origin [0,0]
-        self.obstacles = [obs for obs in self.obstacles if obs != [0, 0]]
+        self.obstacles = []  # populated in reset()
 
     def _spawn_cargos(self):
         """Spawn random 1-8 cargo targets"""
@@ -190,35 +170,10 @@ class WarehouseRobotEnv(gym.Env):
         return targets
 
     def _get_bot2_action(self):
-        """Simple greedy AI for Robot 2"""
-        bot2_pos = self.robot.robot2_pos
-        targets = self.robot.targets
-        
-        # Decision logic:
-        # 1. If full, go home (to [7,7])
-        # 2. If targets avail, go to nearest
-        # 3. Else go home
-        
-        dest = self.robot.robot2_start
-        if self.robot.robot2_carrying < self.robot.max_carry and targets:
-            # Find nearest target
-            min_dist = float('inf')
-            nearest = targets[0]
-            for t in targets:
-                dist = abs(t[0]-bot2_pos[0]) + abs(t[1]-bot2_pos[1])
-                if dist < min_dist:
-                    min_dist = dist
-                    nearest = t
-            dest = nearest
-            
-        # Determine action to move towards dest
-        dy = dest[0] - bot2_pos[0]
-        dx = dest[1] - bot2_pos[1]
-        
-        if abs(dy) > abs(dx):
-            return wr.RobotAction.DOWN if dy > 0 else wr.RobotAction.UP
-        else:
-            return wr.RobotAction.RIGHT if dx > 0 else wr.RobotAction.LEFT
+        """Get opponent action using polymorphic robot class"""
+        self.opponent_robot.pos = list(self.robot.robot2_pos)
+        self.opponent_robot.carrying = self.robot.robot2_carrying
+        return self.opponent_robot.get_action(self.robot.targets, self.obstacles)
 
     def _bfs_distance(self, start, end):
         """Calculate true distance using BFS to account for obstacles"""
@@ -346,7 +301,13 @@ class WarehouseRobotEnv(gym.Env):
         super().reset(seed=seed)
         
         self.robot.reset()
-        # Obstacles are FIXED (set in __init__), only spawn new cargo positions
+        
+        # Generate obstacles using the generator
+        safe_zones = [[0, 0]]
+        if self.enable_opponent:
+            safe_zones.append([self.grid_rows-1, self.grid_cols-1])
+        self.obstacles = self.obstacle_generator.generate(safe_zones)
+        
         targets = self._spawn_cargos()
         self.robot.set_environment(targets, self.obstacles)
         
@@ -373,70 +334,51 @@ class WarehouseRobotEnv(gym.Env):
         
         # 3. Calculate distance reward shaping
         _, _, curr_dist = self._get_nearest_target_info()
-        # Reward for moving closer, penalty for moving away
-        shaping_factor = self.rewards.get('shaping_factor', 0.05)
-        shaping = (self.prev_dist - curr_dist) * shaping_factor
-        self.prev_dist = curr_dist
         
-        # === DENSE REWARD SHAPING ===
-        step_penalty = self.rewards.get('step_penalty', -0.02)
-        reward = step_penalty + shaping
-        
-        # Oscillation penalty: penalize returning to the immediate previous position
-        if self.last_pos is not None and self.robot.get_position() == self.last_pos:
-             reward -= 0.1  # Small penalty for backtracking
-        self.last_pos = self.robot.get_position() if result['moved'] else self.last_pos
-        
-        terminated = False
-        
-        # Check collision
+        # Check collision with rival
         hit_rival = False
         if self.enable_opponent:
             hit_rival = (self.robot.robot_pos == self.robot.robot2_pos)
         
-        # HARDCORE MODE: Game Over if hit obstacle OR Robot 2 (if enabled)
-        if result["hit_obstacle"] or hit_rival:
-            reward = self.rewards.get('collision_penalty', -1.0)
-            terminated = self.rewards.get('terminate_on_collision', True)
-        
-        # Instant reward for picking up cargo
-        if result["picked_cargo"]:
-            reward += self.rewards.get('pickup_reward', 0.5)
-            
-            # === STAGE 1: Navigation Only ===
-            # End episode immediately upon reaching the target
-            if self.stage == 1:
-                terminated = True
-                # Give a big "success" reward similar to delivery
-                reward += self.rewards.get('delivery_base', 5.0)
-                # We can also add efficiency bonus here if we want, but simple is better for now
-        
-        # Delivery Reward
-        if result["delivered"] > 0:
-            count = result["delivered"]
-            base = self.rewards.get('delivery_base', 1.0)
-            combo = self.rewards.get('delivery_combo', 0.5)
-            
-            reward += base * count
-            if count > 1:
-                 reward += combo * (count * (count - 1))  # Combo bonus!
-        
-        truncated = False
-        
-        # Check timeout
-        if self.robot.step_count >= self.max_steps:
-            truncated = True
-        
         # Check if all cargos delivered
         all_cleared = (not self.robot.targets) and (self.robot.carrying == 0)
         
+        # Build state dict for reward strategy
+        reward_state = {
+            "prev_dist": self.prev_dist,
+            "curr_dist": curr_dist,
+            "is_backtrack": self.last_pos is not None and self.robot.get_position() == self.last_pos,
+            "hit_rival": hit_rival,
+            "all_cleared": all_cleared,
+            "optimal_steps": self._estimate_optimal_steps() if all_cleared else 0,
+            "actual_steps": self.robot.step_count,
+            "my_delivered": self.robot.delivered_count,
+            "opponent_delivered": self.robot.robot2_delivered if self.enable_opponent else 0,
+        }
+        
+        # Calculate reward using polymorphic strategy
+        reward = self.reward_strategy.calculate(result, reward_state)
+        
+        # Update state tracking
+        self.prev_dist = curr_dist
+        self.last_pos = self.robot.get_position() if result['moved'] else self.last_pos
+        
+        # Handle termination
+        terminated = False
+        
+        if result["hit_obstacle"] or hit_rival:
+            terminated = self.rewards.get('terminate_on_collision', True)
+        
+        # Stage 1: End on pickup
+        if self.stage == 1 and result["picked_cargo"]:
+            terminated = True
+            reward += self.rewards.get('delivery_base', 5.0)
+        
         if all_cleared:
             terminated = True
-            optimal = self._estimate_optimal_steps()
-            actual = self.robot.step_count
-            eff_bonus_scale = self.rewards.get('efficiency_bonus', 0.2)
-            efficiency_bonus = eff_bonus_scale * min(1.0, optimal / max(actual, 1))
-            reward += efficiency_bonus
+        
+        # Check timeout
+        truncated = self.robot.step_count >= self.max_steps
         
         # Clamp reward - Optional
         # reward = max(-1.0, min(1.0, reward))
