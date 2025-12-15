@@ -1,8 +1,9 @@
 import gymnasium as gym
 import numpy as np
-import matplotlib.pyplot as plt
 import pickle
 import argparse
+import os
+import matplotlib.pyplot as plt
 
 class DistanceRewardWrapper(gym.Wrapper):
     def __init__(self, env, gamma=0.95):
@@ -64,6 +65,21 @@ def run(episodes, is_training=True, render=False):
         q = np.zeros((env.observation_space.n, env.action_space.n)) # init a 64 x 4 array
         epsilon = 1
     else:
+        model_path = os.path.join(os.path.dirname(__file__), 'frozen_lake8x8.pkl')
+        if os.path.exists(model_path):
+            f = open(model_path, 'rb')
+            q = pickle.load(f)
+            f.close()
+        else:
+            print("No trained model found! Starting with random Q-table.")
+            q = np.zeros((env.observation_space.n, env.action_space.n))
+
+
+    learning_rate_a = 0.035   # Learning rate
+    discount_factor_g = 0.995 # Discount factor
+    epsilon = 1             
+    rng = np.random.default_rng()
+    if (os.path.join(os.path.dirname(__file__), 'frozen_lake8x8.pkl')):
         f = open('frozen_lake8x8.pkl', 'rb')
         q = pickle.load(f)
         epsilon = 0.04
