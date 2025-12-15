@@ -3,8 +3,8 @@
 import argparse
 import gymnasium as gym
 import numpy as np
-import matplotlib.pyplot as plt
 import pickle
+import os
 
 def run(episodes, is_training=True, render=False):
     if is_training:
@@ -21,9 +21,14 @@ def run(episodes, is_training=True, render=False):
     if(is_training):
         q = np.zeros((len(pos_space), len(vel_space), env.action_space.n)) # init a 20x20x3 array
     else:
-        f = open('mountain_car.pkl', 'rb')
-        q = pickle.load(f)
-        f.close()
+        model_path = os.path.join(os.path.dirname(__file__), 'mountain_car.pkl')
+        if os.path.exists(model_path):
+            f = open(model_path, 'rb')
+            q = pickle.load(f)
+            f.close()
+        else:
+            print("No trained model found! Starting with random Q-table.")
+            q = np.zeros((len(pos_space), len(vel_space), env.action_space.n))
 
     learning_rate_a = 0.9 # alpha or learning rate
     discount_factor_g = 0.9 # gamma or discount factor.
@@ -84,10 +89,8 @@ def run(episodes, is_training=True, render=False):
     mean_rewards = np.zeros(episodes)
     for t in range(episodes):
         mean_rewards[t] = np.mean(rewards_per_episode[max(0, t-100):(t+1)])
-    plt.xlabel('Episodes')
-    plt.ylabel('Mean Rewards (moving avg of 100 Episodes)')
-    plt.plot(mean_rewards)
-    plt.savefig(f'mountain_car.png')
+    
+    print(f"Final Mean Reward (Last 100 episodes): {mean_rewards[-1]:.2f}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Car Agent Runner")
