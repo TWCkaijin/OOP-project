@@ -1,3 +1,4 @@
+[![Agent Auto Trainer](https://github.com/TWCkaijin/OOP-project/actions/workflows/AgentAutoTrainer.yml/badge.svg)](https://github.com/TWCkaijin/OOP-project/actions/workflows/AgentAutoTrainer.yml)
 # OOP Project - Reinforcement Learning
 
 This project explores Reinforcement Learning (RL) concepts using Gymnasium environments. It consists of three parts, covering Q-Learning, SARSA, and a custom environment implementation.

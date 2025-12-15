@@ -2,6 +2,8 @@ import gymnasium as gym
 import numpy as np
 import pickle
 import argparse
+import os
+import matplotlib.pyplot as plt
 
 class DistanceRewardWrapper(gym.Wrapper):
     def __init__(self, env, gamma=0.95):
@@ -77,7 +79,9 @@ def run(episodes, is_training=True, render=False):
     discount_factor_g = 0.995 # Discount factor
     epsilon = 1             
     rng = np.random.default_rng()
-        f = open('frozen_lake8x8.pkl', 'rb')
+    model_path = os.path.join(os.path.dirname(__file__), 'frozen_lake8x8.pkl')
+    if (os.path.exist(model_path)):
+        f = open(model_path, 'rb')
         q = pickle.load(f)
         epsilon = 0.04
         f.close()
