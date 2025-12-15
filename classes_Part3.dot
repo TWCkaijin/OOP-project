@@ -1,0 +1,146 @@
+digraph "classes_Part3" {
+rankdir=TB     
+charset="utf-8"
+splines=ortho  
+nodesep=0.3    
+ranksep=0.4    
+margin=0
+
+node [
+    shape="record",
+    style="solid",
+    fontsize=10,
+    margin="0.05,0.05",
+    height=0.2
+];
+
+// --- 頂層核心組件 ---
+// 修改這裡的順序，將原本在右邊的 WarehouseRobot 移到最左邊
+{ 
+    rank=same; 
+    "part3.warehouse_robot.WarehouseRobot"; // 移到左
+    "part3.warehouse_env.WarehouseRobotEnv"; // 保持中間
+    "part3.main.train_agent.EpisodeCallback" // 移到右
+}
+
+subgraph cluster_top_tier {
+    style=invis; 
+
+    // 左：實體機器人
+    subgraph cluster_part3_warehouse_robot {
+        label="part3.warehouse_robot";
+        style="filled";
+        color="#e6fff2";
+        margin=5;
+        "part3.warehouse_robot.WarehouseRobot" [color="black", fontcolor="black", label=<{WarehouseRobot|action_font : Font<br ALIGN="LEFT"/>carrying : int<br ALIGN="LEFT"/>cell_size : tuple<br ALIGN="LEFT"/>delivered_count : int<br ALIGN="LEFT"/>enable_opponent : bool<br ALIGN="LEFT"/>grid_cols : int<br ALIGN="LEFT"/>grid_rows : int<br ALIGN="LEFT"/>last_action : str<br ALIGN="LEFT"/>max_carry : int<br ALIGN="LEFT"/>obstacles : list<br ALIGN="LEFT"/>robot2_carrying : int<br ALIGN="LEFT"/>robot2_delivered : int<br ALIGN="LEFT"/>robot2_pos : list<br ALIGN="LEFT"/>robot_pos : list<br ALIGN="LEFT"/>step_count : int<br ALIGN="LEFT"/>targets : list<br ALIGN="LEFT"/>|can_pick_more(): bool<br ALIGN="LEFT"/>get_position(): list<br ALIGN="LEFT"/>move(robot_action): dict<br ALIGN="LEFT"/>move_bot2(action): dict<br ALIGN="LEFT"/>render(status_text: str)<br ALIGN="LEFT"/>reset()<br ALIGN="LEFT"/>set_environment(targets, obstacles)<br ALIGN="LEFT"/>}>];
+        "part3.warehouse_robot.RobotAction" [color="black", fontcolor="black", label=<{RobotAction|UP<br ALIGN="LEFT"/>DOWN<br ALIGN="LEFT"/>LEFT<br ALIGN="LEFT"/>RIGHT<br ALIGN="LEFT"/>|name<br ALIGN="LEFT"/>}>];
+    }
+
+    // 中：環境核心
+    subgraph cluster_part3_env {
+        label="part3.warehouse_env";
+        style="filled";
+        color="#f9f2ff"; 
+        margin=5;
+        "part3.warehouse_env.WarehouseRobotEnv" [color="black", fontcolor="black", label=<{WarehouseRobotEnv|action_space : Discrete<br ALIGN="LEFT"/>agent_id : int<br ALIGN="LEFT"/>enable_obstacles : bool<br ALIGN="LEFT"/>enable_opponent : bool<br ALIGN="LEFT"/>grid_cols : int<br ALIGN="LEFT"/>grid_rows : int<br ALIGN="LEFT"/>max_cargos : int<br ALIGN="LEFT"/>max_carry : int<br ALIGN="LEFT"/>max_reward : float<br ALIGN="LEFT"/>max_steps : int<br ALIGN="LEFT"/>metadata : dict<br ALIGN="LEFT"/>min_cargos : int<br ALIGN="LEFT"/>observation_space : Box<br ALIGN="LEFT"/>prev_dist : float<br ALIGN="LEFT"/>render_mode : NoneType<br ALIGN="LEFT"/>reward_scaler : float<br ALIGN="LEFT"/>robot<br ALIGN="LEFT"/>stage : int<br ALIGN="LEFT"/>total_cargos : int<br ALIGN="LEFT"/>|_get_obs(): ndarray<br ALIGN="LEFT"/>_spawn_cargos()<br ALIGN="LEFT"/>render()<br ALIGN="LEFT"/>reset(seed, options)<br ALIGN="LEFT"/>step(action, opponent_action)<br ALIGN="LEFT"/>}>];
+        "part3.warehouse_env.AgentAdapter" [color="black", fontcolor="black", label=<{AgentAdapter|carrying<br ALIGN="LEFT"/>delivered_count<br ALIGN="LEFT"/>id<br ALIGN="LEFT"/>pos<br ALIGN="LEFT"/>start_pos<br ALIGN="LEFT"/>wr<br ALIGN="LEFT"/>|can_pick_more()<br ALIGN="LEFT"/>move(action)<br ALIGN="LEFT"/>}>];
+    }
+    
+    // 右：主要流程 (EpisodeCallback)
+    subgraph cluster_part3_main {
+        label="part3.main";
+        style="filled";
+        color="#fff5e6"; 
+        margin=5;
+        "part3.main.train_agent.EpisodeCallback" [color="black", fontcolor="black", label=<{EpisodeCallback|current_reward : int<br ALIGN="LEFT"/>episode_count : int<br ALIGN="LEFT"/>episode_rewards : list<br ALIGN="LEFT"/>target_episodes<br ALIGN="LEFT"/>|_on_step() : bool<br ALIGN="LEFT"/>__init__(target_episodes, verbose)<br ALIGN="LEFT"/>}>];
+    }
+}
+
+// --- 下層支撐組件 ---
+subgraph cluster_bottom_stack {
+    style=invis;
+    
+    // 機器人模組
+    subgraph cluster_part3_robots {
+        label="part3.robots";
+        style="filled";
+        color="#e6f3ff";
+        margin=5;
+        {rank=same; "part3.robots.GreedyRobot"; "part3.robots.PatrolRobot"; "part3.robots.RandomRobot"; "part3.robots.RobotAction"}
+        
+        "part3.robots.BaseRobot" [color="black", fontcolor="black", label=<{BaseRobot|carrying : int<br ALIGN="LEFT"/>delivered : int<br ALIGN="LEFT"/>grid_cols : int<br ALIGN="LEFT"/>grid_rows : int<br ALIGN="LEFT"/>max_carry : int<br ALIGN="LEFT"/>pos : list<br ALIGN="LEFT"/>start_pos : list<br ALIGN="LEFT"/>|can_carry_more(): bool<br ALIGN="LEFT"/>deliver(): int<br ALIGN="LEFT"/><I>get_action</I>(targets, obstacles)<br ALIGN="LEFT"/>move(action, obstacles): dict<br ALIGN="LEFT"/>pickup(targets): bool<br ALIGN="LEFT"/>reset()<br ALIGN="LEFT"/>}>];
+        "part3.robots.GreedyRobot" [color="black", fontcolor="black", label=<{GreedyRobot||get_action(targets, obstacles)<br ALIGN="LEFT"/>}>];
+        "part3.robots.PatrolRobot" [color="black", fontcolor="black", label=<{PatrolRobot|patrol_index : int<br ALIGN="LEFT"/>patrol_pattern : list<br ALIGN="LEFT"/>|get_action(targets, obstacles)<br ALIGN="LEFT"/>}>];
+        "part3.robots.RandomRobot" [color="black", fontcolor="black", label=<{RandomRobot||get_action(targets, obstacles)<br ALIGN="LEFT"/>}>];
+        "part3.robots.RobotAction" [color="black", fontcolor="black", label=<{RobotAction|UP<br ALIGN="LEFT"/>DOWN<br ALIGN="LEFT"/>LEFT<br ALIGN="LEFT"/>RIGHT<br ALIGN="LEFT"/>|name<br ALIGN="LEFT"/>}>];
+    }
+
+    // 獎勵模組
+    subgraph cluster_part3_rewards {
+        label="part3.rewards";
+        style="filled";
+        color="#fff0e6";
+        margin=5;
+        {rank=same; "part3.rewards.BasicReward"; "part3.rewards.CompetitiveReward"; "part3.rewards.ShapingReward"}
+        
+        "part3.rewards.RewardStrategy" [color="black", fontcolor="black", label=<{RewardStrategy|config : dict<br ALIGN="LEFT"/>|<I>calculate</I>(result, state): float<br ALIGN="LEFT"/>get(key, default)<br ALIGN="LEFT"/>}>];
+        "part3.rewards.BasicReward" [color="black", fontcolor="black", label=<{BasicReward||calculate(result, state): float<br ALIGN="LEFT"/>}>];
+        "part3.rewards.CompetitiveReward" [color="black", fontcolor="black", label=<{CompetitiveReward|lead_bonus : float<br ALIGN="LEFT"/>steal_bonus : float<br ALIGN="LEFT"/>|calculate(result, state): float<br ALIGN="LEFT"/>}>];
+        "part3.rewards.ShapingReward" [color="black", fontcolor="black", label=<{ShapingReward||calculate(result, state): float<br ALIGN="LEFT"/>}>];
+    }
+
+    // 障礙物模組
+    subgraph cluster_part3_obstacles {
+        label="part3.obstacles";
+        style="filled";
+        color="#f0f0f0";
+        margin=5;
+        {rank=same; "part3.obstacles.EmptyObstacleGenerator"; "part3.obstacles.FixedObstacleGenerator"; "part3.obstacles.RandomObstacleGenerator"}
+
+        "part3.obstacles.ObstacleGenerator" [color="black", fontcolor="black", label=<{ObstacleGenerator|grid_cols : int<br ALIGN="LEFT"/>grid_rows : int<br ALIGN="LEFT"/>|<I>generate</I>(safe_zones): list<br ALIGN="LEFT"/>}>];
+        "part3.obstacles.EmptyObstacleGenerator" [color="black", fontcolor="black", label=<{EmptyObstacleGenerator||generate(safe_zones): list<br ALIGN="LEFT"/>}>];
+        "part3.obstacles.FixedObstacleGenerator" [color="black", fontcolor="black", label=<{FixedObstacleGenerator||generate(safe_zones): list<br ALIGN="LEFT"/>}>];
+        "part3.obstacles.RandomObstacleGenerator" [color="black", fontcolor="black", label=<{RandomObstacleGenerator|max_obstacles : int<br ALIGN="LEFT"/>min_obstacles : int<br ALIGN="LEFT"/>|generate(safe_zones): list<br ALIGN="LEFT"/>}>];
+    }
+}
+
+// 連線關係
+
+// 繼承 (空心三角)
+edge [arrowhead="empty", arrowtail="none", dir=back]; 
+"part3.obstacles.ObstacleGenerator" -> "part3.obstacles.EmptyObstacleGenerator";
+"part3.obstacles.ObstacleGenerator" -> "part3.obstacles.FixedObstacleGenerator";
+"part3.obstacles.ObstacleGenerator" -> "part3.obstacles.RandomObstacleGenerator";
+
+"part3.rewards.RewardStrategy" -> "part3.rewards.BasicReward";
+"part3.rewards.RewardStrategy" -> "part3.rewards.ShapingReward";
+"part3.rewards.ShapingReward" -> "part3.rewards.CompetitiveReward";
+
+"part3.robots.BaseRobot" -> "part3.robots.GreedyRobot";
+"part3.robots.BaseRobot" -> "part3.robots.PatrolRobot";
+"part3.robots.BaseRobot" -> "part3.robots.RandomRobot";
+
+// 組合 (實心菱形)
+edge [dir=forward, arrowtail=diamond, arrowhead=none, style="solid", fontcolor="darkgreen", fontsize=9];
+
+"part3.warehouse_env.WarehouseRobotEnv" -> "part3.warehouse_env.AgentAdapter" [arrowtail=diamond, label="adapter", dir=back];
+
+"part3.warehouse_env.WarehouseRobotEnv" -> "part3.robots.BaseRobot" [arrowtail=diamond, label="opponent", dir=back];
+"part3.warehouse_env.WarehouseRobotEnv" -> "part3.rewards.RewardStrategy" [arrowtail=diamond, label="reward", dir=back];
+"part3.warehouse_env.WarehouseRobotEnv" -> "part3.obstacles.ObstacleGenerator" [arrowtail=diamond, label="obstacles", dir=back];
+
+// 平行核心連結 - 讓線條反映從左到右的關係
+edge [dir=none, style="solid"];
+"part3.warehouse_robot.WarehouseRobot" -> "part3.warehouse_env.WarehouseRobotEnv" [label="controlled_by", constraint=true]; 
+
+// Callback (現在 Callback 在右邊，Env 在左邊)
+// 因為 rank=same，連線方向 (dir) 很重要
+edge [style="dotted", label="uses", dir=back, arrowhead="normal"]; // 反向指標，從右指到左
+"part3.warehouse_env.WarehouseRobotEnv" -> "part3.main.train_agent.EpisodeCallback"; 
+
+// 其他內部連結
+edge [style="solid", label="", dir=none];
+"part3.warehouse_robot.WarehouseRobot" -> "part3.warehouse_robot.RobotAction";
+"part3.robots.BaseRobot" -> "part3.robots.RobotAction";
+
+}

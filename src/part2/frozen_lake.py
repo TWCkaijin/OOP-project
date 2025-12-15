@@ -80,7 +80,7 @@ def run(episodes, is_training=True, render=False):
     epsilon = 1             
     rng = np.random.default_rng()
     model_path = os.path.join(os.path.dirname(__file__), 'frozen_lake8x8.pkl')
-    if (os.path.exist(model_path)):
+    if (os.path.exists(model_path)):
         f = open(model_path, 'rb')
         q = pickle.load(f)
         epsilon = 0.04
