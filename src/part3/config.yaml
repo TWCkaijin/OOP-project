@@ -53,4 +53,4 @@ training:
     network_arch: [128, 128, 128]
 
 paths:
-  model_save_path: "src/part3/ppo_warehouse_no_opponent"
+  model_save_path: "src/part3/ppo_warehouse"

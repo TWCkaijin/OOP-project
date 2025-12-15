@@ -14,15 +14,6 @@ class RobotAction(Enum):
     RIGHT=2
     UP=3
 
-class GridTile(Enum):
-    _FLOOR=0
-    ROBOT=1
-    TARGET=2
-    OBSTACLE=3
-
-    def __str__(self):
-        return self.name[:1]
-
 class WarehouseRobot:
     """
     Pure robot class - only handles:
@@ -245,19 +236,6 @@ class WarehouseRobot:
 
     def render(self, status_text: str = ""):
         """Render the grid with current state"""
-        # Console output
-        # for r in range(self.grid_rows):
-        #     for c in range(self.grid_cols):
-        #         if [r, c] == self.robot_pos:
-        #             print(GridTile.ROBOT, end=' ')
-        #         elif [r, c] in self.targets:
-        #             print(GridTile.TARGET, end=' ')
-        #         elif [r, c] in self.obstacles:
-        #             print(GridTile.OBSTACLE, end=' ')
-        #         else:
-        #             print(GridTile._FLOOR, end=' ')
-        #     print()
-        # print()
 
         self._process_events()
         self.window_surface.fill((255, 255, 255))
