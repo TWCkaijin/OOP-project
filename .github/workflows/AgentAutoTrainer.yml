@@ -82,7 +82,6 @@ jobs:
         run: |
           echo "# 🤖 Agent Evaluation Report" > report.md
           echo "Automated evaluation run results." >> report.md
-          echo "![Mountain Car Result](src/part1/mountain_car.png)" >> report.md
           echo "" >> report.md
 
           echo "## 🏔️ Mountain Car Status" >> report.md
