@@ -1,4 +1,4 @@
-name: Agent Auto Trainer
+name: Agent Auto Evaluator
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       episodes:
         description: "Number of episodes for evaluation"
         required: true
-        default: "100"
+        default: "1000"
 
 permissions:
   contents: write
