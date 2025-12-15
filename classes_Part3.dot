@@ -107,7 +107,7 @@ subgraph cluster_bottom_stack {
 // 連線關係
 
 // 繼承 (空心三角)
-edge [arrowhead="empty", arrowtail="none", dir=back]; 
+edge [arrowhead="none", arrowtail="empty", dir=back]; 
 "part3.obstacles.ObstacleGenerator" -> "part3.obstacles.EmptyObstacleGenerator";
 "part3.obstacles.ObstacleGenerator" -> "part3.obstacles.FixedObstacleGenerator";
 "part3.obstacles.ObstacleGenerator" -> "part3.obstacles.RandomObstacleGenerator";
@@ -131,7 +131,7 @@ edge [dir=forward, arrowtail=diamond, arrowhead=none, style="solid", fontcolor="
 
 // 平行核心連結 - 讓線條反映從左到右的關係
 edge [dir=none, style="solid"];
-"part3.warehouse_robot.WarehouseRobot" -> "part3.warehouse_env.WarehouseRobotEnv" [label="controlled_by", constraint=true]; 
+"part3.warehouse_robot.WarehouseRobot" -> "part3.warehouse_env.WarehouseRobotEnv" [label="controlled_by", constraint=true, arrowtail=diamond, dir=back]; 
 
 // Callback (現在 Callback 在右邊，Env 在左邊)
 // 因為 rank=same，連線方向 (dir) 很重要
@@ -139,7 +139,7 @@ edge [style="dotted", label="uses", dir=back, arrowhead="normal"]; // 反向指�
 "part3.warehouse_env.WarehouseRobotEnv" -> "part3.main.train_agent.EpisodeCallback"; 
 
 // 其他內部連結
-edge [style="solid", label="", dir=none];
+edge [style="dashed", label="", dir=forward, arrowhead="open"];
 "part3.warehouse_robot.WarehouseRobot" -> "part3.warehouse_robot.RobotAction";
 "part3.robots.BaseRobot" -> "part3.robots.RobotAction";
 
