@@ -17,6 +17,41 @@ register(
     entry_point='warehouse_env:WarehouseRobotEnv',
 )
 
+class AgentAdapter:
+    """
+    Encapsulates access to specific robot instances (Robot 1 or Robot 2)
+    within the WarehouseRobot simulation.
+    """
+    def __init__(self, warehouse_robot, agent_id):
+        self.wr = warehouse_robot
+        self.id = agent_id
+        
+    @property
+    def pos(self):
+        return self.wr.robot_pos if self.id == 0 else self.wr.robot2_pos
+
+    @property
+    def start_pos(self):
+        return [0, 0] if self.id == 0 else self.wr.robot2_start
+        
+    @property
+    def carrying(self):
+        return self.wr.carrying if self.id == 0 else self.wr.robot2_carrying
+        
+    @property
+    def delivered_count(self):
+        return self.wr.delivered_count if self.id == 0 else self.wr.robot2_delivered
+    
+    def move(self, action):
+        if self.id == 0:
+            return self.wr.move(action)
+        else:
+            return self.wr.move_bot2(action)
+
+    def can_pick_more(self):
+        return self.carrying < self.wr.max_carry
+
+
 class WarehouseRobotEnv(gym.Env):
     """
     Multi-trip delivery environment:
@@ -27,7 +62,7 @@ class WarehouseRobotEnv(gym.Env):
     - Reward based on total steps (fewer = better)
     """
     
-    metadata = {"render_modes": ["human"], 'render_fps': 8}
+    metadata = {'render_modes': ['human'], 'render_fps': 4}
 
     def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
                  min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,
@@ -90,6 +125,10 @@ class WarehouseRobotEnv(gym.Env):
             max_carry=self.max_carry,
             enable_opponent=self.enable_opponent
         )
+        
+        # Create Agent Adapters for cleaner logic
+        self.agent = AgentAdapter(self.robot, self.agent_id)
+        self.opponent = AgentAdapter(self.robot, 1 - self.agent_id)
         
         # Create opponent robot using polymorphic class (fallback if no model)
         if self.enable_opponent:
@@ -185,8 +224,8 @@ class WarehouseRobotEnv(gym.Env):
         """Get opponent action using trained model if available, else heuristic"""
         if self.opponent_model:
             # Swap identity to get opponent's observation
-            original_id = self.agent_id
-            self.agent_id = 1 - original_id  # If 0->1, If 1->0
+            # We swap the adapters so _get_obs() sees the opponent as "self"
+            self.agent, self.opponent = self.opponent, self.agent
             
             try:
                 obs = self._get_obs()
@@ -194,17 +233,12 @@ class WarehouseRobotEnv(gym.Env):
                 return wr.RobotAction(int(action))
             finally:
                 # Always swap back
-                self.agent_id = original_id
+                self.agent, self.opponent = self.opponent, self.agent
 
         # Fallback to heuristic robot
-        if self.agent_id == 0:
-            # Opponent is Agent 2
-            self.opponent_robot.pos = list(self.robot.robot2_pos)
-            self.opponent_robot.carrying = self.robot.robot2_carrying
-        else:
-            # Opponent is Agent 1
-            self.opponent_robot.pos = list(self.robot.robot_pos)
-            self.opponent_robot.carrying = self.robot.carrying
+        # Opponent robot needs current state of the opponent agent
+        self.opponent_robot.pos = list(self.opponent.pos)
+        self.opponent_robot.carrying = self.opponent.carrying
             
         return self.opponent_robot.get_action(self.robot.targets, self.obstacles)
 
@@ -216,17 +250,11 @@ class WarehouseRobotEnv(gym.Env):
 
     def _get_nearest_target_info(self):
         """Get direction to optimal target using BFS distance"""
-        # Determine self state based on agent_id
-        if self.agent_id == 0:
-            robot_pos = self.robot.robot_pos
-            carrying = self.robot.carrying
-            start_pos = [0, 0]
-            targets = self.robot.targets
-        else:
-            robot_pos = self.robot.robot2_pos
-            carrying = self.robot.robot2_carrying
-            start_pos = self.robot.robot2_start
-            targets = self.robot.targets # Shared targets
+        # Determine self state via adapter
+        robot_pos = self.agent.pos
+        carrying = self.agent.carrying
+        start_pos = self.agent.start_pos
+        targets = self.robot.targets # Shared targets
 
         # If carrying max or no targets left, go to origin
         can_pick = carrying < self.max_carry
@@ -264,12 +292,8 @@ class WarehouseRobotEnv(gym.Env):
 
     def _get_obs(self):
         # Determine self state
-        if self.agent_id == 0:
-            robot_pos = self.robot.robot_pos
-            carrying = self.robot.carrying
-        else:
-            robot_pos = self.robot.robot2_pos
-            carrying = self.robot.robot2_carrying
+        robot_pos = self.agent.pos
+        carrying = self.agent.carrying
         
         # Normalize continuous inputs
         norm_r = robot_pos[0] / (self.grid_rows - 1)
@@ -304,12 +328,7 @@ class WarehouseRobotEnv(gym.Env):
             
         # Mark Opponent (if enabled)
         if self.enable_opponent:
-            if self.agent_id == 0:
-                # Opponent is Robot 2
-                opp_pos = self.robot.robot2_pos
-            else:
-                # Opponent is Robot 1
-                opp_pos = self.robot.robot_pos
+            opp_pos = self.opponent.pos
             
             grid_map[opp_pos[0], opp_pos[1]] = -2.0
             
@@ -352,41 +371,27 @@ class WarehouseRobotEnv(gym.Env):
 
 
     def step(self, action, opponent_action=None):
-        # Dispatch actions based on which agent we are controlling
-        if self.agent_id == 0:
-            # We control Agent 1
-            # 1. Opponent Move (Agent 2) if enabled
-            if self.enable_opponent:
-                if opponent_action is not None:
-                    # External control for opponent
-                    self.robot.move_bot2(wr.RobotAction(opponent_action))
-                else:
-                    # Internal heuristic
-                    opp_action = self._get_opponent_action()
-                    self.robot.move_bot2(opp_action)
-            
-            # 2. Agent Move (Agent 1)
-            result = self.robot.move(wr.RobotAction(action))
-            
-            my_delivered = self.robot.delivered_count
-            opp_delivered = self.robot.robot2_delivered
-            
-        else:
-            # We control Agent 2
-            # 1. Opponent Move (Agent 1) if enabled
-            if self.enable_opponent:
-                if opponent_action is not None:
-                    # External control for opponent
-                    self.robot.move(wr.RobotAction(opponent_action))
-                else:
-                    opp_action = self._get_opponent_action()
-                    self.robot.move(opp_action)
-                
-            # 2. Agent Move (Agent 2)
-            result = self.robot.move_bot2(wr.RobotAction(action))
-            
-            my_delivered = self.robot.robot2_delivered
-            opp_delivered = self.robot.delivered_count
+        # 1. Opponent Move (if enabled)
+        if self.enable_opponent:
+            if opponent_action is not None:
+                # External control
+                try: 
+                    # Handle raw integer input from Gym/SB3
+                    op_act = wr.RobotAction(opponent_action)
+                except ValueError:
+                    op_act = wr.RobotAction(int(opponent_action))
+                    
+                self.opponent.move(op_act)
+            else:
+                # Internal heuristic or model
+                opp_action = self._get_opponent_action()
+                self.opponent.move(opp_action)
+        
+        # 2. Agent Move
+        result = self.agent.move(wr.RobotAction(action))
+        
+        my_delivered = self.agent.delivered_count
+        opp_delivered = self.opponent.delivered_count if self.enable_opponent else 0
         
         # 3. Calculate distance reward shaping and state
         _, _, curr_dist = self._get_nearest_target_info()
@@ -397,13 +402,6 @@ class WarehouseRobotEnv(gym.Env):
             hit_rival = (self.robot.robot_pos == self.robot.robot2_pos)
         
         # Check if all cargos delivered
-        # Task is complete if NO targets left (targets list empty) AND BOTH (or all active) carrying 0?
-        # Typically "all_cleared" means targets empty. But if bots are carrying, they must deliver.
-        # Original code: (not self.robot.targets) and (self.robot.carrying == 0)
-        # We should probably check if targets empty and "my" carrying is 0 to be cleared for "me", 
-        # but realistically the episode ends when all work is done.
-        
-        # Simplify: Episode ends when targets empty and both not carrying.
         targets_empty = not self.robot.targets
         bot1_empty = (self.robot.carrying == 0)
         bot2_empty = (self.robot.robot2_carrying == 0)
@@ -414,41 +412,47 @@ class WarehouseRobotEnv(gym.Env):
         reward_state = {
             "prev_dist": self.prev_dist,
             "curr_dist": curr_dist,
-            "is_backtrack": self.last_pos is not None and np.array_equal(self._get_obs()[:2], self.last_pos[:2]), # Aprrox check
+            "is_backtrack": self.last_pos is not None and np.array_equal(self._get_obs()[:2], self.last_pos[:2]), 
             "hit_rival": hit_rival,
             "all_cleared": all_cleared,
             "optimal_steps": self._estimate_optimal_steps() if all_cleared else 0,
-            "actual_steps": self.robot.step_count, # Use global step count or per-bot? Using global for now.
+            "actual_steps": self.robot.step_count, 
             "my_delivered": my_delivered,
-            "opponent_delivered": opp_delivered if self.enable_opponent else 0,
+            "opponent_delivered": opp_delivered,
         }
         
         # Calculate reward using polymorphic strategy
         reward = self.reward_strategy.calculate(result, reward_state)
         
-        # Update state tracking
         self.prev_dist = curr_dist
-        # Track last pos of controlled agent
-        if self.agent_id == 0:
-             current_pos = self.robot.robot_pos
-        else:
-             current_pos = self.robot.robot2_pos
-             
-        self.last_pos = current_pos if result['moved'] else self.last_pos
+        self.last_pos = self._get_obs()[:2]
         
-        # Handle termination
+        # Termination conditions
         terminated = False
-        
-        if result["hit_obstacle"] or hit_rival:
-            terminated = self.rewards.get('terminate_on_collision', True)
-        
-        # Stage 1: End on pickup (Only relevant for Agent 1 usually, but good to keep generic)
-        if self.stage == 1 and result["picked_cargo"]:
-            terminated = True
-            reward += self.rewards.get('delivery_base', 5.0)
-        
         if all_cleared:
-            terminated = True
+            info = {
+                "task_completed": True,
+                "total_cargos": self.total_cargos, 
+                "delivered": self.agent.delivered_count
+            }
+            return self._get_obs(), reward, True, False, info
+            
+        if self.rewards.get('terminate_on_collision') and (result['hit_obstacle'] or hit_rival):
+            info = {
+                "task_completed": False,
+                "total_cargos": self.total_cargos, 
+                "delivered": self.agent.delivered_count
+            }
+            return self._get_obs(), reward, True, False, info
+            
+        # Max steps handling usually done by Wrapper, but we have internal check too if needed
+        # We leave truncation to Gym wrapper or main loop check
+        
+        info = {
+            "task_completed": False, 
+            "total_cargos": self.total_cargos,
+            "delivered": self.agent.delivered_count
+        }
         
         # Check timeout
         truncated = self.robot.step_count >= self.max_steps

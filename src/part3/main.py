@@ -10,6 +10,34 @@ def load_config(config_path="src/part3/config.yaml"):
     with open(config_path, "r") as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
+def get_opponent_model(config, agent_id, device):
+    """
+    Load opponent model for iterative training.
+    """
+    from stable_baselines3 import PPO, DQN
+    
+    path_conf = config['paths']
+    train_conf = config['training']
+    
+    opp_id = 1 - agent_id
+    opp_path = path_conf['model_save_path']
+    # Enforce p1/p2 suffixes
+    if opp_id == 1:
+        opp_path += "_p2"
+    elif opp_id == 0:
+        opp_path += "_p1"
+        
+    if os.path.exists(opp_path + ".zip") or os.path.exists(opp_path):
+         print(f"Loading opponent model (Agent {opp_id}) from {opp_path}...")
+         algo_type = train_conf.get('algorithm', 'PPO')
+         if algo_type == 'DQN':
+             return DQN.load(opp_path, device=device)
+         else:
+             return PPO.load(opp_path, device=device)
+    else:
+         print(f"No trained opponent found at {opp_path}. Using Greedy heuristic.")
+         return None
+
 def train_agent(config, override_episodes=None, override_opponent=None, continue_training=False, agent_id=0):
     """
     Train a PPO agent using configuration from YAML.
@@ -33,28 +61,17 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     save_path = path_conf['model_save_path']
     if agent_id == 1:
         save_path += "_p2"
+    elif agent_id == 0:
+        save_path += "_p1"
         
     stage = env_conf.get('stage', 3)  # Default to 3 if not in config
     random_obstacles = env_conf.get('random_obstacles', False)
     
     # Try to load opponent model for iterative training
-    device = train_conf.get('device', 'cpu')
     opponent_model = None
-    if override_opponent is not False: # If opponent enabled (None implies default True)
-        opp_id = 1 - agent_id
-        opp_path = path_conf['model_save_path']
-        if opp_id == 1:
-            opp_path += "_p2"
-            
-        if os.path.exists(opp_path + ".zip") or os.path.exists(opp_path):
-             print(f"Loading opponent model (Agent {opp_id}) from {opp_path}...")
-             algo_type = train_conf.get('algorithm', 'PPO')
-             if algo_type == 'DQN':
-                 opponent_model = DQN.load(opp_path, device=device)
-             else:
-                 opponent_model = PPO.load(opp_path, device=device)
-        else:
-             print(f"No trained opponent found at {opp_path}. Using Greedy heuristic.")
+    if override_opponent is not False:
+        device = train_conf.get('device', 'cpu')
+        opponent_model = get_opponent_model(config, agent_id, device)
     
     env = gym.make('warehouse-robot-v0', render_mode=None, 
                    enable_opponent=override_opponent,
@@ -218,6 +235,8 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     model_path = path_conf['model_save_path']
     if agent_id == 1:
         model_path += "_p2"
+    elif agent_id == 0:
+        model_path += "_p1"
     episodes = override_episodes if override_episodes is not None else 5
     enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
     stage = env_conf.get('stage', 3)
@@ -293,7 +312,7 @@ def run_battle(config, override_episodes=None, override_render=True):
     train_conf = config.get('training', {})
     
     # Paths
-    path1 = path_conf['model_save_path']
+    path1 = path_conf['model_save_path'] + "_p1"
     path2 = path_conf['model_save_path'] + "_p2"
     
     # Check if models exist
