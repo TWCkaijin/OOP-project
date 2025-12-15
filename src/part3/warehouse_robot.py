@@ -178,36 +178,64 @@ class WarehouseRobot:
             "total_delivered": self.delivered_count
         }
 
-    def move_bot2(self, action: RobotAction):
+    def move_bot2(self, action: RobotAction) -> dict:
         """Move Robot 2 (The Rival/Partner)"""
-        new_pos = self.robot2_pos.copy()
+        self.step_count += 0 # Bot 2 steps doesn't affect main step count directly, but tracked in env
         
-        if action == RobotAction.LEFT and self.robot2_pos[1] > 0:
-            new_pos[1] -= 1
-        elif action == RobotAction.RIGHT and self.robot2_pos[1] < self.grid_cols - 1:
-            new_pos[1] += 1
-        elif action == RobotAction.UP and self.robot2_pos[0] > 0:
-            new_pos[0] -= 1
-        elif action == RobotAction.DOWN and self.robot2_pos[0] < self.grid_rows - 1:
-            new_pos[0] += 1
+        new_pos = self.robot2_pos.copy()
+        hit_boundary = False
+        
+        if action == RobotAction.LEFT:
+            if self.robot2_pos[1] > 0:
+                new_pos[1] -= 1
+            else:
+                hit_boundary = True
+        elif action == RobotAction.RIGHT:
+            if self.robot2_pos[1] < self.grid_cols - 1:
+                new_pos[1] += 1
+            else:
+                hit_boundary = True
+        elif action == RobotAction.UP:
+            if self.robot2_pos[0] > 0:
+                new_pos[0] -= 1
+            else:
+                hit_boundary = True
+        elif action == RobotAction.DOWN:
+            if self.robot2_pos[0] < self.grid_rows - 1:
+                new_pos[0] += 1
+            else:
+                hit_boundary = True
             
         # Bot 2 checks obstacles too
-        if new_pos not in self.obstacles:
+        hit_obstacle = new_pos in self.obstacles
+        
+        if not hit_obstacle and not hit_boundary:
             self.robot2_pos = new_pos
             
         # Bot 2 Pickup (competes for same targets!)
-        picked = False
+        picked_cargo = False
         if self.robot2_pos in self.targets and self.robot2_carrying < self.max_carry:
             self.targets.remove(self.robot2_pos)
             self.robot2_carrying += 1
-            picked = True
+            picked_cargo = True
             
         # Bot 2 Delivery (at its own origin [7,7])
+        delivered = 0
         if self.robot2_pos == self.robot2_start and self.robot2_carrying > 0:
+            delivered = self.robot2_carrying
             self.robot2_delivered += self.robot2_carrying
             self.robot2_carrying = 0
             
-        return picked
+        return {
+            "hit_obstacle": hit_obstacle or hit_boundary,
+            "moved": not (hit_obstacle or hit_boundary),
+            "picked_cargo": picked_cargo,
+            "delivered": delivered,
+            "at_origin": self.robot2_pos == self.robot2_start,
+            "position": self.robot2_pos.copy(),
+            "carrying": self.robot2_carrying,
+            "total_delivered": self.robot2_delivered
+        }
 
     def get_position(self) -> list:
         return self.robot_pos.copy()
