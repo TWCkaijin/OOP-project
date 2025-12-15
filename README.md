@@ -1,91 +1,79 @@
 [![Agent Auto Trainer](https://github.com/TWCkaijin/OOP-project/actions/workflows/AgentAutoTrainer.yml/badge.svg)](https://github.com/TWCkaijin/OOP-project/actions/workflows/AgentAutoTrainer.yml)
 # OOP Project - Reinforcement Learning
 
-This project explores Reinforcement Learning (RL) concepts using Gymnasium environments. It consists of three parts, covering Q-Learning, SARSA, and a custom environment implementation.
+This is a warehouse robot reinforcement learning project developed based on **Gymnasium** and **Stable-Baselines3**. The objective of this project is to train an intelligent agent capable of efficiently transporting cargo in a warehouse environment filled with obstacles, while competing or cooperating with an opponent (or other robots).
 
 ## Project Structure
 
-- **part1/**: Q-Learning implementation for the Mountain Car environment.
-- **part2/**: SARSA implementation for the Frozen Lake (8x8) environment.
-- **part3/**: Custom Gymnasium environment simulation for a Warehouse Robot.
+This project is divided into three main parts, with the current core development focused on `src/part3`:
 
-## Prerequisites
+*   **`src/part1`**: Basic Reinforcement Learning algorithm implementations (e.g., Mountain Car).
+*   **`src/part2`**: Advanced RL environment testing (e.g., Frozen Lake).
+*   **`src/part3`**: **Core of the Warehouse Robot Project**.
 
-Ensure you have Python 3.13+ installed. This project uses `uv` for dependency management, but you can also use `pip`.
+### Part 3: Warehouse Robot Environment
 
-### Dependencies
-- `gymnasium`
-- `numpy`
-- `matplotlib`
-- `pygame` (required for Part 3 and rendering)
-- `ipykernel` (for notebook execution)
+The `src/part3` directory contains the custom warehouse environment, robot logic, reward mechanisms, and training scripts.
 
-## Installation
+#### Core Module Descriptions
 
-1.  **Clone the repository** (if applicable) or navigate to the project directory.
+*   **`main.py`**:
+    *   The entry point of the application.
+    *   Handles parameter parsing and environment initialization.
+    *   Manages the Training Loop and Evaluation processes.
+    *   Includes `EpisodeCallback` for monitoring the training progress.
 
-2.  **Install dependencies**:
-    If you are using `uv`:
+*   **`warehouse_env.py`**:
+    *   Defines the `WarehouseRobotEnv` class (inheriting from `gym.Env`).
+    *   Handles environment state updates, observation generation (`_get_obs`), and reward calculation calls.
+    *   Includes the `AgentAdapter` class to unify the interface for operating Agent 0 and Agent 1.
+
+*   **`warehouse_robot.py`**:
+    *   Defines the `WarehouseRobot` class, responsible for low-level Pygame rendering and physics logic.
+    *   Handles collision detection and movement animation effects.
+
+*   **`robots.py`**:
+    *   Defines behavior strategies for opponent robots.
+    *   Includes `GreedyRobot` (Greedy Strategy), `PatrolRobot` (Patrol Strategy), and `RandomRobot` (Random Strategy).
+    *   All robots inherit from `BaseRobot`.
+
+*   **`rewards.py`**:
+    *   Defines modular reward calculation strategies (`RewardStrategy`).
+    *   Includes different calculation methods such as `BasicReward`, `ShapingReward`, and `CompetitiveReward`.
+
+*   **`obstacles.py`**:
+    *   Responsible for generating obstacles within the environment.
+    *   Includes `FixedObstacleGenerator` and `RandomObstacleGenerator`.
+
+## System Architecture (UML Class Diagram)
+
+The diagram below illustrates the relationships, inheritance structures, and dependency directions between various classes in the system.
+
+*   **Top Tier**: Shows the interaction between the Training Process (`EpisodeCallback`), Environment Core (`WarehouseRobotEnv`), and the Physical Robot Entity (`WarehouseRobot`).
+*   **Middle Tier**: The `robots` module, defining different types of robot behaviors.
+*   **Bottom Tier**: The `rewards` and `obstacles` modules, serving as supporting components for the environment.
+
+![System Architecture UML](classes_Part3.png)
+
+## Installation & Usage
+
+1.  **Install Dependencies**:
     ```bash
     uv sync
     ```
-    Or with `pip`:
+
+2.  **Training**:
+    Train Agent 0 (Player 1)
     ```bash
-    pip install gymnasium numpy matplotlib pygame ipykernel
+    uv run src/part3/main.py --train --agent-id 0
     ```
 
-## Usage
+3.  **Evaluation**:
+    ```bash
+    uv run src/part3/main.py --eval --agent-id 0 --render
+    ```
 
-### Part 1: Mountain Car (Q-Learning)
-
-Solves the classic Mountain Car problem where an underpowered car must drive up a steep hill.
-
-**Training:**
-To train the agent and save the Q-table:
-```bash
-python part1/mountain_car.py --train --episodes 10000
-```
-This will save the model to `part1/mountain_car.pkl` and a reward plot to `part1/mountain_car.png`.
-
-**Evaluation:**
-To run the trained agent with rendering:
-```bash
-python part1/mountain_car.py --episodes 10 --render
-```
-
-### Part 2: Frozen Lake (SARSA)
-
-Solves the Frozen Lake 8x8 environment where an agent must navigate a frozen lake from Start to Goal without falling into holes.
-
-**Training:**
-To train the agent:
-```bash
-python part2/frozen_lake.py --train --episodes 10000
-```
-This saves the model to `part2/frozen_lake8x8.pkl` and a reward plot to `part2/frozen_lake8x8.png`.
-
-**Evaluation:**
-To evaluate the trained agent:
-```bash
-python part2/frozen_lake.py --episodes 100 --render
-```
-
-### Part 3: Warehouse Robot (Custom Environment)
-
-A custom GridWorld environment where a robot must navigate to a target package.
-
-**Running the Environment:**
-You can run the environment directly to see the robot in action (random actions or manual control if implemented):
-```bash
-python part3/oop_project_env.py
-```
-Or run the robot logic directly:
-```bash
-python part3/warehouse_robot.py
-```
-
-## Implementation Details
-
--   **Part 1**: Uses Q-Learning with state discretization for continuous observation space.
--   **Part 2**: Uses SARSA (State-Action-Reward-State-Action) algorithm.
--   **Part 3**: Implements a custom class `WarehouseRobot` and wraps it in a Gymnasium `Env` class (`WarehouseRobotEnv`). Uses Pygame for rendering.
+4.  **Battle Mode**:
+    ```bash
+    uv run src/part3/main.py --battle
+    ```

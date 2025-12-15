@@ -10,7 +10,35 @@ def load_config(config_path="src/part3/config.yaml"):
     with open(config_path, "r") as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
-def train_agent(config, override_episodes=None, override_opponent=None, continue_training=False):
+def get_opponent_model(config, agent_id, device):
+    """
+    Load opponent model for iterative training.
+    """
+    from stable_baselines3 import PPO, DQN
+    
+    path_conf = config['paths']
+    train_conf = config['training']
+    
+    opp_id = 1 - agent_id
+    opp_path = path_conf['model_save_path']
+    # Enforce p1/p2 suffixes
+    if opp_id == 1:
+        opp_path += "_p2"
+    elif opp_id == 0:
+        opp_path += "_p1"
+        
+    if os.path.exists(opp_path + ".zip") or os.path.exists(opp_path):
+         print(f"Loading opponent model (Agent {opp_id}) from {opp_path}...")
+         algo_type = train_conf.get('algorithm', 'PPO')
+         if algo_type == 'DQN':
+             return DQN.load(opp_path, device=device)
+         else:
+             return PPO.load(opp_path, device=device)
+    else:
+         print(f"No trained opponent found at {opp_path}. Using Greedy heuristic.")
+         return None
+
+def train_agent(config, override_episodes=None, override_opponent=None, continue_training=False, agent_id=0):
     """
     Train a PPO agent using configuration from YAML.
     """
@@ -31,8 +59,19 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     
     # Allow overrides
     save_path = path_conf['model_save_path']
+    if agent_id == 1:
+        save_path += "_p2"
+    elif agent_id == 0:
+        save_path += "_p1"
+        
     stage = env_conf.get('stage', 3)  # Default to 3 if not in config
     random_obstacles = env_conf.get('random_obstacles', False)
+    
+    # Try to load opponent model for iterative training
+    opponent_model = None
+    if override_opponent is not False:
+        device = train_conf.get('device', 'cpu')
+        opponent_model = get_opponent_model(config, agent_id, device)
     
     env = gym.make('warehouse-robot-v0', render_mode=None, 
                    enable_opponent=override_opponent,
@@ -40,7 +79,9 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
                    random_obstacles=random_obstacles,
                    max_steps=env_conf.get('max_steps', 1000),
                    reward_config=reward_conf,
-                   stage=stage)
+                   stage=stage,
+                   agent_id=agent_id,
+                   opponent_model=opponent_model)
     
     # Custom callback to track episodes
     class EpisodeCallback(BaseCallback):
@@ -178,7 +219,7 @@ def train_agent(config, override_episodes=None, override_opponent=None, continue
     env.close()
     return model
 
-def evaluate_agent(config, override_episodes=None, override_render=True, override_opponent=None):
+def evaluate_agent(config, override_episodes=None, override_render=True, override_opponent=None, agent_id=0):
     """Evaluate a trained agent using config"""
     try:
         from stable_baselines3 import PPO, DQN
@@ -192,6 +233,10 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     train_conf = config.get('training', {})
     
     model_path = path_conf['model_save_path']
+    if agent_id == 1:
+        model_path += "_p2"
+    elif agent_id == 0:
+        model_path += "_p1"
     episodes = override_episodes if override_episodes is not None else 5
     enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
     stage = env_conf.get('stage', 3)
@@ -209,7 +254,8 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
                    random_obstacles=random_obstacles,
                    max_steps=env_conf.get('max_steps', 1000),
                    reward_config=reward_conf,
-                   stage=stage)
+                   stage=stage,
+                   agent_id=agent_id)
     
     total_rewards = []
     total_steps = []
@@ -247,6 +293,122 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     
     env.close()
 
+def run_battle(config, override_episodes=None, override_render=True):
+    """
+    Run a battle between two trained agents (Agent 1 vs Agent 2).
+    Requires both models to be trained and saved.
+    """
+    try:
+        from stable_baselines3 import PPO, DQN
+    except ImportError:
+        print("Please install stable-baselines3: pip install stable-baselines3")
+        return
+    
+    import os
+
+    path_conf = config['paths']
+    env_conf = config['environment']
+    reward_conf = config.get('rewards', None)
+    train_conf = config.get('training', {})
+    
+    # Paths
+    path1 = path_conf['model_save_path'] + "_p1"
+    path2 = path_conf['model_save_path'] + "_p2"
+    
+    # Check if models exist
+    if not (os.path.exists(path1 + ".zip") or os.path.exists(path1)):
+        print(f"Error: Agent 1 model not found at {path1}")
+        return
+    if not (os.path.exists(path2 + ".zip") or os.path.exists(path2)):
+        print(f"Error: Agent 2 model not found at {path2}")
+        return
+        
+    print(f"Loading Agent 1 (Top-Left) from {path1}...")
+    print(f"Loading Agent 2 (Bottom-Right) from {path2}...")
+    
+    device = train_conf.get('device', 'cpu')
+    algo_type = train_conf.get('algorithm', 'PPO')
+    
+    # Load Models
+    if algo_type == 'DQN':
+        model1 = DQN.load(path1, device=device)
+        model2 = DQN.load(path2, device=device)
+    else:
+        model1 = PPO.load(path1, device=device)
+        model2 = PPO.load(path2, device=device)
+        
+    episodes = override_episodes if override_episodes is not None else 5
+    stage = env_conf.get('stage', 3)
+    # Default to False for fair battle unless specified
+    random_obstacles = env_conf.get('random_obstacles', False)
+    
+    # Create Env (Agent 0 as primary controller)
+    env = gym.make('warehouse-robot-v0', render_mode='human' if override_render else None, 
+                   enable_opponent=True,
+                   enable_obstacles=env_conf.get('enable_obstacles', True),
+                   random_obstacles=random_obstacles,
+                   max_steps=env_conf.get('max_steps', 1000),
+                   reward_config=reward_conf,
+                   stage=stage,
+                   agent_id=0) 
+    
+    p1_wins = 0
+    p2_wins = 0
+    
+    for ep in range(episodes):
+        obs1, info = env.reset() # Reset returns obs for agent_id=0
+        
+        terminated = False
+        truncated = False
+        steps = 0
+        
+        print(f"\n--- Battle Episode {ep+1} ---")
+        
+        while not terminated and not truncated:
+            # 1. Get Action for Agent 1
+            action1, _ = model1.predict(obs1, deterministic=True)
+            
+            # 2. Get Action for Agent 2
+            # Switch perspective temporarily to get Obs for Agent 2
+            # Use unwrapped to access internal methods/attributes blocked by Gym wrappers
+            unwrapped_env = env.unwrapped
+            unwrapped_env.agent_id = 1 
+            obs2 = unwrapped_env._get_obs()
+            unwrapped_env.agent_id = 0 # Switch back
+            
+            action2, _ = model2.predict(obs2, deterministic=True)
+            
+            # 3. Step Environment
+            # Use unwrapped step to allow passing opponent_action
+            obs1, reward, terminated, truncated, info = unwrapped_env.step(action1, opponent_action=action2)
+            
+            steps += 1
+            if steps > 500: # Safety break
+                truncated = True
+        
+        # Result
+        # For battle, delivered count is the key metric
+        # Access robot instances directly
+        p1_score = unwrapped_env.robot.delivered_count
+        p2_score = unwrapped_env.robot.robot2_delivered
+        
+        print(f"Result: P1: {p1_score} | P2: {p2_score}")
+        
+        if p1_score > p2_score:
+            p1_wins += 1
+            print("Winner: Agent 1")
+        elif p2_score > p1_score:
+            p2_wins += 1
+            print("Winner: Agent 2")
+        else:
+            print("Draw")
+            
+    print("-" * 30)
+    print(f"Battle Summary ({episodes} games):")
+    print(f"Agent 1 Wins: {p1_wins}")
+    print(f"Agent 2 Wins: {p2_wins}")
+    env.close()
+
 if __name__ == '__main__':
     config = load_config()
     
@@ -256,16 +418,21 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train a new agent')
     parser.add_argument('--continue-train', action='store_true', help='Continue training existing agent')
     parser.add_argument('--eval', action='store_true', help='Evaluate trained agent')
+    parser.add_argument('--battle', action='store_true', help='Run 1v1 Battle between trained agents')
     parser.add_argument('--no-opponent', action='store_true', help='Disable the opponent (override YAML)')
+    
+    parser.add_argument('--agent-id', type=int, default=0, help='Agent ID to train (0: Top-Left, 1: Bottom-Right)')
     
     args = parser.parse_args()
     override_opponent = False if args.no_opponent else None
     
     if args.train:
-        train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=False)
+        train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=False, agent_id=args.agent_id)
     elif args.continue_train:
-         train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=True)
+         train_agent(config, override_episodes=args.episodes, override_opponent=override_opponent, continue_training=True, agent_id=args.agent_id)
     elif args.eval:
-        evaluate_agent(config, override_episodes=args.episodes, override_render=args.render, override_opponent=override_opponent)
+        evaluate_agent(config, override_episodes=args.episodes, override_render=args.render, override_opponent=override_opponent, agent_id=args.agent_id)
+    elif args.battle:
+        run_battle(config, override_episodes=args.episodes, override_render=args.render)
     else:
-        print("Please specify --train, --continue-train, or --eval mode.")
+        print("Please specify --train, --continue-train, --eval, or --battle mode.")
