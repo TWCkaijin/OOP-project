@@ -69,11 +69,8 @@ The diagram below illustrates the relationships, inheritance structures, and dep
     ```
 
 3.  **Evaluation**:
-    ```bash
-    uv run src/part3/main.py --eval --agent-id 0 --render
-    ```
 
-4.  **Battle Mode**:
+    modify the cofing of **stage: 2**
     ```bash
-    uv run src/part3/main.py --battle
+    uv run src/part3/main.py --eval --render
     ```

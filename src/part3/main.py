@@ -21,7 +21,7 @@ def get_opponent_model(config, agent_id, device):
     
     opp_id = 1 - agent_id
     opp_path = path_conf['model_save_path']
-    # Enforce p1/p2 suffixes
+    # p1/p2 suffixes
     if opp_id == 1:
         opp_path += "_p2"
     elif opp_id == 0:

@@ -1,6 +1,7 @@
 digraph "classes_Part3" {
 rankdir=TB     
 charset="utf-8"
+dpi=1200
 splines=ortho  
 nodesep=0.3    
 ranksep=0.4    
