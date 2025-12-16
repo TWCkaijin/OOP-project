@@ -62,7 +62,7 @@ class WarehouseRobotEnv(gym.Env):
     - Reward based on total steps (fewer = better)
     """
     
-    metadata = {'render_modes': ['human'], 'render_fps': 10}
+    metadata = {'render_modes': ['human'], 'render_fps': 16}
 
     def __init__(self, grid_rows=8, grid_cols=8, render_mode=None, 
                  min_cargos=1, max_cargos=8, max_carry=3, enable_opponent=True,

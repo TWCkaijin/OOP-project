@@ -235,8 +235,6 @@ def evaluate_agent(config, override_episodes=None, override_render=True, overrid
     model_path = path_conf['model_save_path']
     if agent_id == 1:
         model_path += "_p2"
-    elif agent_id == 0:
-        model_path += "_p1"
     episodes = override_episodes if override_episodes is not None else 5
     enable_opponent = override_opponent if override_opponent is not None else env_conf['enable_opponent']
     stage = env_conf.get('stage', 3)
@@ -312,7 +310,7 @@ def run_battle(config, override_episodes=None, override_render=True):
     train_conf = config.get('training', {})
     
     # Paths
-    path1 = path_conf['model_save_path'] + "_p1"
+    path1 = path_conf['model_save_path']
     path2 = path_conf['model_save_path'] + "_p2"
     
     # Check if models exist

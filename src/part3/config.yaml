@@ -3,7 +3,7 @@ environment:
   # 1: Navigation Only (Single target, no enemy, ends on pickup)
   # 2: Cargo Delivery (Variable cargo, no enemy, full delivery loop)
   # 3: Competition (Full game with enemy)
-  stage: 3 # Default stage
+  stage: 2 # Default stage
   grid_rows: 8
   grid_cols: 8
   max_carry: 3
@@ -53,4 +53,4 @@ training:
     network_arch: [128, 128, 128]
 
 paths:
-  model_save_path: "src/part3/ppo_warehouse"
+  model_save_path: "src/part3/ppo_warehouse_no_opponent.zip"
