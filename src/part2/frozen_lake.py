@@ -58,7 +58,7 @@ def print_success_rate(rewards_per_episode):
 
 def run(episodes, is_training=True, render=False):
 
-    env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, success_rate=0.75, render_mode='ansi' if render else None)
+    env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, success_rate=0.75, render_mode='human' if render else None)
     env = DistanceRewardWrapper(env)
 
     if(is_training):
